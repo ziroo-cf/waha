@@ -49,7 +49,8 @@ data class VideoItem(
     val title: String,
     val meta: String,
     val thumbnailUrl: String? = null,
-    val categoryKey: String? = null
+    val categoryKey: String? = null,
+    val durationText: String? = null
 )
 
 const val ALL_CATEGORY_KEY = "all"
@@ -66,6 +67,20 @@ val categoryLabels = mapOf(
 fun VideoItem.displayThumbnailUrl(): String =
     thumbnailUrl?.takeIf { it.isNotBlank() }
         ?: "https://img.youtube.com/vi/$youtubeId/hqdefault.jpg"
+
+@Composable
+fun DurationBadge(durationText: String) {
+    Text(
+        text = durationText,
+        color = Color.White,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .padding(6.dp)
+            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    )
+}
 
 /** Compose-friendly saved state that updates automatically when the video is toggled elsewhere. */
 @Composable
@@ -324,6 +339,12 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit) {
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )
+            }
+
+            video.durationText?.let { duration ->
+                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                    DurationBadge(durationText = duration)
+                }
             }
         }
 

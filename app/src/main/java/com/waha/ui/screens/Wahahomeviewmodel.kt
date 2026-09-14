@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.waha.data.VideoRepository
 import com.waha.data.VideoRow
+import com.waha.data.toVideoDurationText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,6 +68,9 @@ class WahaHomeViewModel(
         title = title ?: "بدون عنوان",
         meta = category?.let { categoryLabels[it] ?: it } ?: "",
         thumbnailUrl = thumbnail?.takeIf { it.isNotBlank() },
-        categoryKey = category
+        categoryKey = category,
+        durationText = duration
+            ?.takeIf { it > kotlin.time.Duration.ZERO }
+            ?.toVideoDurationText()
     )
 }

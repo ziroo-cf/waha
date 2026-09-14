@@ -265,6 +265,12 @@ private fun SuggestionRow(video: VideoItem, onClick: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+
+            video.durationText?.let { duration ->
+                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                    DurationBadge(durationText = duration)
+                }
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
