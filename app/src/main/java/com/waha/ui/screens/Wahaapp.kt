@@ -16,7 +16,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.waha.data.ParentalPinStore
 import com.waha.data.RecentSearchesStore
 import com.waha.data.SavedVideosStore
 import com.waha.ui.theme.WahaDarkBg
@@ -30,13 +29,9 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
     LaunchedEffect(Unit) {
         SavedVideosStore.init(context)
         RecentSearchesStore.init(context)
-        ParentalPinStore.init(context)
     }
 
-    var showPinDialog by remember { mutableStateOf<String?>(null) }
-
     var currentScreen by remember { mutableStateOf(WahaScreen.Home) }
-    var isSettingsUnlocked by remember { mutableStateOf(false) }
     var activeVideo by remember { mutableStateOf<VideoItem?>(null) }
     var showSearch by remember { mutableStateOf(false) }
     var isChromeVisible by remember { mutableStateOf(true) }
@@ -47,7 +42,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
 
     val uiState by viewModel.uiState.collectAsState()
     val successState = uiState as? HomeUiState.Success
-    val allVideos = successState?.shuffledVideos.orEmpty()
+    val allVideos = successState?.videos.orEmpty()
 
     val dynamicCategories = remember(successState?.videosByCategory?.keys) {
         listOf(CategoryFilterTile(ALL_CATEGORY_KEY, "الكل")) +
@@ -63,10 +58,6 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
     }
 
     fun navigateTo(screen: WahaScreen) {
-        if (screen == WahaScreen.Settings && ParentalPinStore.isEnabled.value && !isSettingsUnlocked) {
-            showPinDialog = "unlock"
-            return
-        }
         currentScreen = screen
         isChromeVisible = true
     }
@@ -153,20 +144,6 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                     showSearch = false
                 },
                 onClose = { showSearch = false }
-            )
-        }
-
-        if (showPinDialog != null) {
-            ParentalPinDialog(
-                title = "رمز الوالدين",
-                subtitle = "أدخل الرمز المكوّن من 4 أرقام للدخول إلى الإعدادات",
-                errorText = "الرمز غير صحيح، حاول مجدداً",
-                onPinEntered = { entered ->
-                    val correct = ParentalPinStore.verifyPin(entered)
-                    if (correct) isSettingsUnlocked = true
-                    correct
-                },
-                onDismiss = { showPinDialog = null }
             )
         }
 

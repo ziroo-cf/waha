@@ -11,11 +11,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 sealed interface HomeUiState {
-    object Loading : HomeUiState
+    data object Loading : HomeUiState
     data class Success(
-        val shuffledVideos: List<VideoItem>,
+        val videos: List<VideoItem>,
         val videosByCategory: Map<String, List<VideoItem>>
     ) : HomeUiState
+
     data class Error(val message: String) : HomeUiState
 }
 
@@ -42,14 +43,13 @@ class WahaHomeViewModel(
             }
             try {
                 val rows = repository.getVideos()
-                val allVideos = rows.map { it.toVideoItem() }
-                val grouped = rows
-                    .filter { it.category != null }
-                    .groupBy { it.category!! }
-                    .mapValues { (_, categoryRows) -> categoryRows.map { it.toVideoItem() }.shuffled() }
+                val videos = rows.map { it.toVideoItem() }.shuffled()
+                val grouped = videos
+                    .groupBy { it.categoryKey.orEmpty() }
+                    .filterKeys { it.isNotEmpty() }
 
                 _uiState.value = HomeUiState.Success(
-                    shuffledVideos = allVideos.shuffled(),
+                    videos = videos,
                     videosByCategory = grouped
                 )
             } catch (e: Exception) {
@@ -66,8 +66,7 @@ class WahaHomeViewModel(
         youtubeId = id,
         title = title ?: "بدون عنوان",
         meta = category?.let { categoryLabels[it] ?: it } ?: "",
-        thumbnailUrl = thumbnail?.takeIf { it.isNotBlank() }
-            ?: "https://img.youtube.com/vi/$id/hqdefault.jpg",
+        thumbnailUrl = thumbnail?.takeIf { it.isNotBlank() },
         categoryKey = category
     )
 }

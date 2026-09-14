@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,8 +22,9 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.*
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.waha.R
+import com.waha.data.SavedVideosStore
 import com.waha.ui.theme.*
 
 data class VideoItem(
@@ -59,6 +62,61 @@ val categoryLabels = mapOf(
     "educational" to "تعليمي",
     "dubbed" to "دبلجة رسمية"
 )
+
+fun VideoItem.displayThumbnailUrl(): String =
+    thumbnailUrl?.takeIf { it.isNotBlank() }
+        ?: "https://img.youtube.com/vi/$youtubeId/hqdefault.jpg"
+
+/** Compose-friendly saved state that updates automatically when the video is toggled elsewhere. */
+@Composable
+fun SavedVideosStore.rememberSavedState(videoId: String): State<Boolean> {
+    val savedIds = SavedVideosStore.savedIds
+    // Key on videoId so switching videos (e.g. in the player) re-derives for the new video.
+    return remember(videoId) { derivedStateOf { savedIds.contains(videoId) } }
+}
+
+@Composable
+fun SavedVideosStore.savedVideosState(allVideos: List<VideoItem>): List<VideoItem> {
+    // Reading the snapshot list here subscribes the composition to save/unsave changes.
+    val savedIds = SavedVideosStore.savedIds.toList()
+    return allVideos.filter { video -> savedIds.contains(video.id) }
+}
+
+/**
+ * Hides the top/bottom chrome while scrolling down and shows it again when the
+ * user scrolls up, using an index change or a 60px accumulated pixel delta.
+ */
+@Composable
+fun LazyListState.HideOnScrollEffect(onVisibilityChange: (Boolean) -> Unit) {
+    var previousIndex by remember { mutableStateOf(0) }
+    var previousOffset by remember { mutableStateOf(0) }
+    var accumulatedDelta by remember { mutableStateOf(0) }
+    val scrollThresholdPx = 60
+
+    LaunchedEffect(this) {
+        snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                if (index != previousIndex) {
+                    onVisibilityChange(index <= previousIndex)
+                    accumulatedDelta = 0
+                } else {
+                    accumulatedDelta += offset - previousOffset
+                    when {
+                        accumulatedDelta > scrollThresholdPx -> {
+                            onVisibilityChange(false)
+                            accumulatedDelta = 0
+                        }
+                        accumulatedDelta < -scrollThresholdPx -> {
+                            onVisibilityChange(true)
+                            accumulatedDelta = 0
+                        }
+                    }
+                }
+                previousIndex = index
+                previousOffset = offset
+            }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,41 +156,16 @@ fun WahaHomeScreen(
             }
             is HomeUiState.Success -> {
                 val displayedVideos = if (selectedCategory == ALL_CATEGORY_KEY) {
-                    state.shuffledVideos
+                    state.videos
                 } else {
                     state.videosByCategory[selectedCategory].orEmpty()
                 }
 
-                LaunchedEffect(state.shuffledVideos, selectedCategory) {
+                LaunchedEffect(state.videos, selectedCategory) {
                     listState.scrollToItem(0)
                 }
 
-                var previousIndex by remember { mutableStateOf(0) }
-                var previousOffset by remember { mutableStateOf(0) }
-                var accumulatedDelta by remember { mutableStateOf(0) }
-                val scrollThresholdPx = 60
-
-                LaunchedEffect(listState) {
-                    snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-                        .collect { (index, offset) ->
-                            if (index != previousIndex) {
-                                onChromeVisibilityChange(index <= previousIndex)
-                                accumulatedDelta = 0
-                            } else {
-                                val delta = offset - previousOffset
-                                accumulatedDelta += delta
-                                if (accumulatedDelta > scrollThresholdPx) {
-                                    onChromeVisibilityChange(false)
-                                    accumulatedDelta = 0
-                                } else if (accumulatedDelta < -scrollThresholdPx) {
-                                    onChromeVisibilityChange(true)
-                                    accumulatedDelta = 0
-                                }
-                            }
-                            previousIndex = index
-                            previousOffset = offset
-                        }
-                }
+                listState.HideOnScrollEffect(onVisibilityChange = onChromeVisibilityChange)
 
                 if (displayedVideos.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -250,8 +283,7 @@ fun CategoryFilterBar(
 
 @Composable
 fun VideoCard(video: VideoItem, onClick: () -> Unit) {
-    val safeThumbnailUrl = video.thumbnailUrl?.takeIf { it.isNotBlank() }
-        ?: "https://img.youtube.com/vi/${video.youtubeId}/hqdefault.jpg"
+    val isSaved by SavedVideosStore.rememberSavedState(video.id)
 
     Column(
         modifier = Modifier
@@ -267,15 +299,15 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit) {
                 .background(Brush.linearGradient(listOf(WahaCardBg2, WahaCardBg)))
         ) {
             AsyncImage(
-                model = safeThumbnailUrl,
+                model = video.displayThumbnailUrl(),
                 contentDescription = video.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
                 onError = { state ->
-                    Log.e("WahaDebug", "فشل تحميل الصورة: $safeThumbnailUrl", state.result.throwable)
+                    Log.e("WahaDebug", "فشل تحميل الصورة: ${video.displayThumbnailUrl()}", state.result.throwable)
                 },
                 onSuccess = {
-                    Log.d("WahaDebug", "نجح تحميل الصورة: $safeThumbnailUrl")
+                    Log.d("WahaDebug", "نجح تحميل الصورة: ${video.displayThumbnailUrl()}")
                 }
             )
 

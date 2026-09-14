@@ -5,7 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -22,8 +22,10 @@ fun SavedVideosScreen(
     onVideoClick: (VideoItem) -> Unit,
     onChromeVisibilityChange: (Boolean) -> Unit = {}
 ) {
-    val savedVideos = allVideos.filter { SavedVideosStore.isSaved(it.id) }
+    val savedVideos = SavedVideosStore.savedVideosState(allVideos)
     val listState = rememberLazyListState()
+
+    listState.HideOnScrollEffect(onVisibilityChange = onChromeVisibilityChange)
 
     if (savedVideos.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -35,33 +37,6 @@ fun SavedVideosScreen(
             )
         }
     } else {
-        var previousIndex by remember { mutableStateOf(0) }
-        var previousOffset by remember { mutableStateOf(0) }
-        var accumulatedDelta by remember { mutableStateOf(0) }
-        val scrollThresholdPx = 60
-
-        LaunchedEffect(listState) {
-            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-                .collect { (index, offset) ->
-                    if (index != previousIndex) {
-                        onChromeVisibilityChange(index <= previousIndex)
-                        accumulatedDelta = 0
-                    } else {
-                        val delta = offset - previousOffset
-                        accumulatedDelta += delta
-                        if (accumulatedDelta > scrollThresholdPx) {
-                            onChromeVisibilityChange(false)
-                            accumulatedDelta = 0
-                        } else if (accumulatedDelta < -scrollThresholdPx) {
-                            onChromeVisibilityChange(true)
-                            accumulatedDelta = 0
-                        }
-                    }
-                    previousIndex = index
-                    previousOffset = offset
-                }
-        }
-
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
