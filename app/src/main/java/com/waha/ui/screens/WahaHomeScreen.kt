@@ -173,7 +173,7 @@ fun WahaTopBar(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(100.dp),
             color = WahaCardBg,
             shadowElevation = 4.dp
         ) {
@@ -188,7 +188,7 @@ fun WahaTopBar(
                         contentDescription = "شعار واحة",
                         modifier = Modifier
                             .size(32.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(100.dp))
                     )
                     Text(
                         text = "واحة",
@@ -330,7 +330,7 @@ fun WahaBottomNavigation(selectedScreen: WahaScreen, onScreenSelect: (WahaScreen
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(100.dp),
             color = WahaCardBg,
             shadowElevation = 6.dp
         ) {

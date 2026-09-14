@@ -12,6 +12,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
@@ -37,8 +39,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.waha.data.ParentalPinStore
 import com.waha.data.ThemePreferenceStore
-import com.waha.ui.theme.WahaCardBg
+import com.waha.ui.theme.WahaDarkBg
 import com.waha.ui.theme.WahaLine
 import com.waha.ui.theme.WahaTeal
 import com.waha.ui.theme.WahaTextMuted
@@ -48,6 +51,9 @@ import com.waha.BuildConfig
 @Composable
 fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp) {
     val isDarkMode by ThemePreferenceStore.isDarkMode
+    val isPinEnabled by ParentalPinStore.isEnabled
+    var showEnablePinDialog by remember { mutableStateOf(false) }
+    var showDisablePinDialog by remember { mutableStateOf(false) }
     var showPolicyDialog by remember { mutableStateOf(false) }
 
     val uriHandler = LocalUriHandler.current
@@ -83,7 +89,7 @@ fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp) {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(WahaCardBg),
+                    .background(WahaDarkBg),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.DarkMode, contentDescription = null, tint = WahaTeal)
@@ -104,6 +110,16 @@ fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp) {
         Divider(color = WahaLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
 
         SettingsSectionTitle("الأمان والآباء")
+
+        SettingsRow(
+            icon = if (isPinEnabled) Icons.Default.LockOpen else Icons.Default.Lock,
+            title = if (isPinEnabled) "إيقاف رمز الوالدين" else "رمز الوالدين",
+            subtitle = if (isPinEnabled) "إيقاف الحماية عن شاشة الإعدادات"
+            else "حماية شاشة الإعدادات برمز من 4 أرقام",
+            onClick = {
+                if (isPinEnabled) showDisablePinDialog = true else showEnablePinDialog = true
+            }
+        )
 
         SettingsRow(
             icon = Icons.Default.Shield,
@@ -161,6 +177,29 @@ fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp) {
             onDismiss = { showPolicyDialog = false }
         )
     }
+
+    if (showEnablePinDialog) {
+        ParentalPinDialog(
+            title = "تعيين رمز الوالدين",
+            subtitle = "اختر رمزاً من 4 أرقام لحماية شاشة الإعدادات",
+            errorText = "تعذّر حفظ الرمز، حاول مجدداً",
+            onPinEntered = { entered ->
+                ParentalPinStore.setPin(entered)
+                true
+            },
+            onDismiss = { showEnablePinDialog = false }
+        )
+    }
+
+    if (showDisablePinDialog) {
+        ParentalPinDialog(
+            title = "إيقاف رمز الوالدين",
+            subtitle = "أدخل الرمز الحالي لإيقاف الحماية",
+            errorText = "الرمز غير صحيح، حاول مجدداً",
+            onPinEntered = { entered -> ParentalPinStore.disablePin(entered) },
+            onDismiss = { showDisablePinDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -193,7 +232,7 @@ private fun SettingsRow(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(WahaCardBg),
+                .background(WahaDarkBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = WahaTeal)
@@ -213,7 +252,7 @@ fun ContentPolicyDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = WahaCardBg,
+        containerColor = WahaDarkBg,
         icon = {
             Icon(
                 imageVector = Icons.Default.Shield,
