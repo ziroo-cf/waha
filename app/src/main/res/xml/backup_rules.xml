@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Backup rules: device-local secrets and preference files must never leave the device.
+   Backup rules: device-local preferences and search history must never leave the device.
    See https://developer.android.com/guide/topics/data/autobackup
+   An empty <full-backup-content> backs up everything, so the exclusions below are required.
 -->
 <full-backup-content>
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="datastore" />
 </full-backup-content>

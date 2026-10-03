@@ -48,6 +48,38 @@ import com.waha.ui.theme.WahaTextWarm
 
 private const val FULLSCREEN_VIEW_TAG = "youtube_fullscreen_view"
 
+/** Matches titles that end with an episode marker, e.g. "Tarzan Episode 2" or "طارزان الحلقة ٣". */
+private val EPISODE_TITLE_REGEX = Regex(
+    """^(.*?)[\s\-–—_:]*\s*(?:episode|ep\.?|part|الحلقة|حلقه|الجزء)\s*([0-9\u0660-\u0669\u06F0-\u06F9]+)\s*$""",
+    RegexOption.IGNORE_CASE
+)
+
+/** Rewrites Arabic-Indic digits (٠-٩ / ۰-۹) to ASCII so episode numbers parse uniformly. */
+private fun normalizeDigits(text: String): String = buildString(text.length) {
+    for (ch in text) {
+        append(
+            when (ch) {
+                in '\u0660'..'\u0669' -> '0' + (ch - '\u0660')
+                in '\u06F0'..'\u06F9' -> '0' + (ch - '\u06F0')
+                else -> ch
+            }
+        )
+    }
+}
+
+/**
+ * Splits a title into its series base and episode number when it carries an
+ * episode marker ("Tarzan Episode 2" -> ("tarzan", 2)). Returns null for
+ * titles with no episode number.
+ */
+private fun parseSeriesEpisode(title: String): Pair<String, Int>? {
+    val match = EPISODE_TITLE_REGEX.matchEntire(title.trim()) ?: return null
+    val base = match.groupValues[1].trim().trimEnd('-', '–', '—', ':', '_', ' ').lowercase()
+    if (base.isEmpty()) return null
+    val episode = normalizeDigits(match.groupValues[2]).toIntOrNull() ?: return null
+    return base to episode
+}
+
 private fun buildSuggestions(
     current: VideoItem,
     allVideos: List<VideoItem>,
@@ -55,18 +87,38 @@ private fun buildSuggestions(
 ): List<VideoItem> {
     val pool = allVideos.filter { it.id != current.id }
 
+    // When the title belongs to a numbered series, pin the immediate next
+    // episode (same series base, episode + 1) as the very first suggestion.
+    val nextEpisode = parseSeriesEpisode(current.title)?.let { (base, episode) ->
+        pool.firstOrNull { candidate ->
+            parseSeriesEpisode(candidate.title)
+                ?.let { it.first == base && it.second == episode + 1 } == true
+        }
+    }
+
+    val usedIds = mutableSetOf<String>()
+    val ordered = mutableListOf<VideoItem>()
+
+    if (nextEpisode != null) {
+        ordered += nextEpisode
+        usedIds += nextEpisode.id
+    }
+
     val sameCategoryFirst = pool
+        .filter { it.id !in usedIds }
         .filter { it.categoryKey != null && it.categoryKey == current.categoryKey }
         .shuffled()
         .take(2)
 
-    val usedIds = sameCategoryFirst.map { it.id }.toSet()
+    ordered += sameCategoryFirst
+    usedIds += sameCategoryFirst.map { it.id }
+
     val rest = pool
         .filter { it.id !in usedIds }
         .shuffled()
-        .take((count - sameCategoryFirst.size).coerceAtLeast(0))
+        .take((count - ordered.size).coerceAtLeast(0))
 
-    return sameCategoryFirst + rest
+    return ordered + rest
 }
 
 private fun Activity.enterImmersiveFullscreen() {
