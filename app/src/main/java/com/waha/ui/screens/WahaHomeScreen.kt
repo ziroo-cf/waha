@@ -7,11 +7,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -103,13 +106,32 @@ fun SavedVideosStore.savedVideosState(allVideos: List<VideoItem>): List<VideoIte
  */
 @Composable
 fun LazyListState.HideOnScrollEffect(onVisibilityChange: (Boolean) -> Unit) {
+    HideOnScrollEffectImpl(
+        stateFlow = { firstVisibleItemIndex to firstVisibleItemScrollOffset },
+        onVisibilityChange = onVisibilityChange
+    )
+}
+
+@Composable
+fun LazyGridState.HideOnScrollEffect(onVisibilityChange: (Boolean) -> Unit) {
+    HideOnScrollEffectImpl(
+        stateFlow = { firstVisibleItemIndex to firstVisibleItemScrollOffset },
+        onVisibilityChange = onVisibilityChange
+    )
+}
+
+@Composable
+private fun HideOnScrollEffectImpl(
+    stateFlow: () -> Pair<Int, Int>,
+    onVisibilityChange: (Boolean) -> Unit
+) {
     var previousIndex by remember { mutableStateOf(0) }
     var previousOffset by remember { mutableStateOf(0) }
     var accumulatedDelta by remember { mutableStateOf(0) }
     val scrollThresholdPx = 60
 
-    LaunchedEffect(this) {
-        snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }
+    LaunchedEffect(Unit) {
+        snapshotFlow(stateFlow)
             .collect { (index, offset) ->
                 if (index != previousIndex) {
                     onVisibilityChange(index <= previousIndex)
@@ -141,11 +163,14 @@ fun WahaHomeScreen(
     bottomBarHeight: Dp,
     selectedCategory: String,
     onVideoClick: (VideoItem) -> Unit,
-    onChromeVisibilityChange: (Boolean) -> Unit = {}
+    onChromeVisibilityChange: (Boolean) -> Unit = {},
+    sideBarPadding: Dp = 0.dp
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
+    val windowInfo = rememberWahaWindowInfo()
+    val columns = windowInfo.gridColumns
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -187,13 +212,16 @@ fun WahaHomeScreen(
                         Text("لا توجد اي فيديوهات في هذه الفئة بعد", color = WahaTextMuted)
                     }
                 } else {
-                    LazyColumn(
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
+                            start = sideBarPadding,
                             top = topBarHeight + 12.dp,
                             bottom = bottomBarHeight + 12.dp
                         ),
+                        horizontalArrangement = Arrangement.spacedBy(if (columns > 1) 8.dp else 0.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(displayedVideos, key = { it.id }) { video ->
@@ -310,7 +338,7 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(0.dp))
                 .background(Brush.linearGradient(listOf(WahaCardBg2, WahaCardBg)))
         ) {
             AsyncImage(
@@ -372,31 +400,33 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit) {
 }
 
 @Composable
-fun WahaBottomNavigation(selectedScreen: WahaScreen, onScreenSelect: (WahaScreen) -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 28.dp, vertical = 10.dp)
-    ) {
+fun WahaBottomNavigation(
+    selectedScreen: WahaScreen,
+    onScreenSelect: (WahaScreen) -> Unit,
+    vertical: Boolean = false
+) {
+    if (vertical) {
+        // Tablet: a floating vertical island anchored to the side of the screen.
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp),
+                .navigationBarsPadding()
+                .width(TabletNavRailWidth)
+                .padding(horizontal = 10.dp, vertical = 16.dp),
             shape = RoundedCornerShape(100.dp),
             color = WahaCardBg,
             shadowElevation = 6.dp
         ) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 BottomNavItem(
                     selected = selectedScreen == WahaScreen.Home,
                     outlinedIcon = Icons.Outlined.Home,
                     filledIcon = Icons.Filled.Home,
                     label = "الرئيسية",
+                    horizontalPadding = 10.dp,
                     onClick = { onScreenSelect(WahaScreen.Home) }
                 )
                 BottomNavItem(
@@ -404,8 +434,46 @@ fun WahaBottomNavigation(selectedScreen: WahaScreen, onScreenSelect: (WahaScreen
                     outlinedIcon = Icons.Outlined.BookmarkBorder,
                     filledIcon = Icons.Filled.Bookmark,
                     label = "محفوظاتي",
+                    horizontalPadding = 10.dp,
                     onClick = { onScreenSelect(WahaScreen.Saved) }
                 )
+            }
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp, vertical = 10.dp)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                shape = RoundedCornerShape(100.dp),
+                color = WahaCardBg,
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BottomNavItem(
+                        selected = selectedScreen == WahaScreen.Home,
+                        outlinedIcon = Icons.Outlined.Home,
+                        filledIcon = Icons.Filled.Home,
+                        label = "الرئيسية",
+                        onClick = { onScreenSelect(WahaScreen.Home) }
+                    )
+                    BottomNavItem(
+                        selected = selectedScreen == WahaScreen.Saved,
+                        outlinedIcon = Icons.Outlined.BookmarkBorder,
+                        filledIcon = Icons.Filled.Bookmark,
+                        label = "محفوظاتي",
+                        onClick = { onScreenSelect(WahaScreen.Saved) }
+                    )
+                }
             }
         }
     }
@@ -417,12 +485,13 @@ private fun BottomNavItem(
     outlinedIcon: ImageVector,
     filledIcon: ImageVector,
     label: String,
+    horizontalPadding: Dp = 22.dp,
     onClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+            .padding(horizontal = horizontalPadding, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {

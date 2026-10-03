@@ -46,7 +46,7 @@ import com.waha.ui.theme.WahaTextWarm
 import com.waha.BuildConfig
 
 @Composable
-fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp) {
+fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp, sideBarPadding: Dp = 0.dp) {
     val isDarkMode by ThemePreferenceStore.isDarkMode
     var showPolicyDialog by remember { mutableStateOf(false) }
 
@@ -62,6 +62,7 @@ fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
+            .padding(start = sideBarPadding)
             .padding(top = topBarHeight + 20.dp, bottom = bottomBarHeight + 20.dp)
     ) {
         Text(

@@ -2,7 +2,9 @@ package com.waha.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -15,6 +17,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.waha.data.RecentSearchesStore
 import com.waha.data.SavedVideosStore
@@ -39,6 +42,10 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
 
     var topBarHeight by remember { mutableStateOf(Dp.Hairline) }
     var bottomBarHeight by remember { mutableStateOf(Dp.Hairline) }
+    var sideBarWidth by remember { mutableStateOf(Dp.Hairline) }
+
+    val windowInfo = rememberWahaWindowInfo()
+    val useTabletLayout = windowInfo.useTabletLayout
 
     val uiState by viewModel.uiState.collectAsState()
     val successState = uiState as? HomeUiState.Success
@@ -62,11 +69,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
         isChromeVisible = true
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(WahaDarkBg)
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(WahaDarkBg)) {
         Box(modifier = Modifier.fillMaxSize()) {
             when (currentScreen) {
                 WahaScreen.Home -> WahaHomeScreen(
@@ -75,18 +78,21 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                     bottomBarHeight = bottomBarHeight,
                     selectedCategory = selectedCategory,
                     onVideoClick = { activeVideo = it },
-                    onChromeVisibilityChange = { isChromeVisible = it }
+                    onChromeVisibilityChange = { isChromeVisible = it },
+                    sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
                 WahaScreen.Settings -> SettingsScreen(
                     topBarHeight = topBarHeight,
-                    bottomBarHeight = bottomBarHeight
+                    bottomBarHeight = bottomBarHeight,
+                    sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
                 WahaScreen.Saved -> SavedVideosScreen(
                     allVideos = allVideos,
                     topBarHeight = topBarHeight,
                     bottomBarHeight = bottomBarHeight,
                     onVideoClick = { activeVideo = it },
-                    onChromeVisibilityChange = { isChromeVisible = it }
+                    onChromeVisibilityChange = { isChromeVisible = it },
+                    sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
             }
         }
@@ -121,18 +127,34 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
 
         AnimatedVisibility(
             visible = isChromeVisible,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it }),
+            enter = if (useTabletLayout) {
+                slideInHorizontally(initialOffsetX = { it })
+            } else {
+                slideInVertically(initialOffsetY = { it })
+            },
+            exit = if (useTabletLayout) {
+                slideOutHorizontally(targetOffsetX = { it })
+            } else {
+                slideOutVertically(targetOffsetY = { it })
+            },
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                // In RTL the layout "start" edge is the physical right, matching
+                // the requested right-hand island for tablets.
+                .align(if (useTabletLayout) Alignment.CenterStart else Alignment.BottomCenter)
                 .onSizeChanged {
-                    val measured = with(density) { it.height.toDp() }
-                    if (measured > Dp.Hairline) bottomBarHeight = measured
+                    val measured = with(density) { it.width.toDp() }
+                    val measuredHeight = with(density) { it.height.toDp() }
+                    if (useTabletLayout) {
+                        if (measured > Dp.Hairline) sideBarWidth = measured
+                    } else if (measuredHeight > Dp.Hairline) {
+                        bottomBarHeight = measuredHeight
+                    }
                 }
         ) {
             WahaBottomNavigation(
                 selectedScreen = currentScreen,
-                onScreenSelect = { navigateTo(it) }
+                onScreenSelect = { navigateTo(it) },
+                vertical = useTabletLayout
             )
         }
 

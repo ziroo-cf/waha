@@ -1,9 +1,10 @@
 package com.waha.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,10 +21,12 @@ fun SavedVideosScreen(
     topBarHeight: Dp,
     bottomBarHeight: Dp,
     onVideoClick: (VideoItem) -> Unit,
-    onChromeVisibilityChange: (Boolean) -> Unit = {}
+    onChromeVisibilityChange: (Boolean) -> Unit = {},
+    sideBarPadding: Dp = 0.dp
 ) {
     val savedVideos = SavedVideosStore.savedVideosState(allVideos)
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
+    val columns = rememberWahaWindowInfo().gridColumns
 
     listState.HideOnScrollEffect(onVisibilityChange = onChromeVisibilityChange)
 
@@ -37,13 +40,16 @@ fun SavedVideosScreen(
             )
         }
     } else {
-        LazyColumn(
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
+                start = sideBarPadding,
                 top = topBarHeight + 16.dp,
                 bottom = bottomBarHeight + 16.dp
             ),
+            horizontalArrangement = Arrangement.spacedBy(if (columns > 1) 8.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             items(savedVideos, key = { it.id }) { video ->
