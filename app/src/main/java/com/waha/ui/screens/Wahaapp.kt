@@ -2,6 +2,11 @@ package com.waha.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -21,9 +26,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.waha.data.RecentSearchesStore
 import com.waha.data.SavedVideosStore
+import com.waha.data.WatchHistoryStore
 import com.waha.ui.theme.WahaDarkBg
 
-enum class WahaScreen { Home, Settings, Saved }
+enum class WahaScreen { Home, Settings, Saved, History }
 
 @Composable
 fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
@@ -32,6 +38,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
     LaunchedEffect(Unit) {
         SavedVideosStore.init(context)
         RecentSearchesStore.init(context)
+        WatchHistoryStore.init(context)
     }
 
     var currentScreen by remember { mutableStateOf(WahaScreen.Home) }
@@ -54,7 +61,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
     val dynamicCategories = remember(successState?.videosByCategory?.keys) {
         listOf(CategoryFilterTile(ALL_CATEGORY_KEY, "الكل")) +
                 successState?.videosByCategory?.keys.orEmpty().sorted().map { key ->
-                    CategoryFilterTile(key, categoryLabels[key] ?: key)
+                    CategoryFilterTile(key, key)
                 }
     }
 
@@ -70,8 +77,10 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(WahaDarkBg)) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (currentScreen) {
+        // Screens melt into each other instead of hard-swapping.
+        Crossfade(targetState = currentScreen, animationSpec = tween(220), label = "screenCrossfade") {
+            screen ->
+            when (screen) {
                 WahaScreen.Home -> WahaHomeScreen(
                     viewModel = viewModel,
                     topBarHeight = topBarHeight,
@@ -87,6 +96,14 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                     sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
                 WahaScreen.Saved -> SavedVideosScreen(
+                    allVideos = allVideos,
+                    topBarHeight = topBarHeight,
+                    bottomBarHeight = bottomBarHeight,
+                    onVideoClick = { activeVideo = it },
+                    onChromeVisibilityChange = { isChromeVisible = it },
+                    sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
+                )
+                WahaScreen.History -> WatchHistoryScreen(
                     allVideos = allVideos,
                     topBarHeight = topBarHeight,
                     bottomBarHeight = bottomBarHeight,
@@ -158,7 +175,15 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
             )
         }
 
-        if (showSearch) {
+        // Search slides over the screen with a fade, like a sheet.
+        AnimatedVisibility(
+            visible = showSearch,
+            enter = fadeIn(tween(200)) + scaleIn(
+                initialScale = 0.96f,
+                animationSpec = tween(200)
+            ),
+            exit = fadeOut(tween(160))
+        ) {
             SearchOverlay(
                 allVideos = allVideos,
                 onVideoClick = {
@@ -169,13 +194,23 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
             )
         }
 
-        activeVideo?.let { video ->
-            VideoPlayerModal(
-                video = video,
-                allVideos = allVideos,
-                onVideoSelect = { selected -> activeVideo = selected },
-                onClose = { activeVideo = null }
-            )
+        // The player rises into place with a fade, like a sheet.
+        AnimatedVisibility(
+            visible = activeVideo != null,
+            enter = fadeIn(tween(200)) + scaleIn(
+                initialScale = 0.94f,
+                animationSpec = tween(200)
+            ),
+            exit = fadeOut(tween(160))
+        ) {
+            activeVideo?.let { video ->
+                VideoPlayerModal(
+                    video = video,
+                    allVideos = allVideos,
+                    onVideoSelect = { selected -> activeVideo = selected },
+                    onClose = { activeVideo = null }
+                )
+            }
         }
     }
 }

@@ -2,12 +2,18 @@ package com.waha.ui.screens
 
 import android.util.Log
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -20,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -34,14 +41,17 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.waha.R
 import com.waha.data.SavedVideosStore
 import com.waha.ui.theme.*
@@ -59,13 +69,6 @@ data class VideoItem(
 const val ALL_CATEGORY_KEY = "all"
 
 data class CategoryFilterTile(val key: String, val label: String)
-
-val categoryLabels = mapOf(
-    "kids" to "للأطفال",
-    "islamic" to "إسلاميات",
-    "educational" to "تعليمي",
-    "dubbed" to "دبلجة رسمية"
-)
 
 fun VideoItem.displayThumbnailUrl(): String =
     thumbnailUrl?.takeIf { it.isNotBlank() }
@@ -104,14 +107,6 @@ fun SavedVideosStore.savedVideosState(allVideos: List<VideoItem>): List<VideoIte
  * Hides the top/bottom chrome while scrolling down and shows it again when the
  * user scrolls up, using an index change or a 60px accumulated pixel delta.
  */
-@Composable
-fun LazyListState.HideOnScrollEffect(onVisibilityChange: (Boolean) -> Unit) {
-    HideOnScrollEffectImpl(
-        stateFlow = { firstVisibleItemIndex to firstVisibleItemScrollOffset },
-        onVisibilityChange = onVisibilityChange
-    )
-}
-
 @Composable
 fun LazyGridState.HideOnScrollEffect(onVisibilityChange: (Boolean) -> Unit) {
     HideOnScrollEffectImpl(
@@ -225,7 +220,11 @@ fun WahaHomeScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(displayedVideos, key = { it.id }) { video ->
-                            VideoCard(video = video, onClick = { onVideoClick(video) })
+                            VideoCard(
+                                video = video,
+                                modifier = Modifier.animateItem(),
+                                onClick = { onVideoClick(video) }
+                            )
                         }
                     }
                 }
@@ -306,11 +305,20 @@ fun CategoryFilterBar(
     ) {
         items(categories, key = { it.key }) { cat ->
             val isSelected = cat.key == selectedCategory
+            // The chip colours glide instead of snapping between states.
+            val chipColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary else WahaCardBg,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                label = "chipColor"
+            )
             Surface(
                 onClick = { onCategorySelect(cat.key) },
                 shape = RoundedCornerShape(100.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else WahaCardBg,
-                border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else WahaLine)
+                color = chipColor,
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) MaterialTheme.colorScheme.primary else WahaLine
+                )
             ) {
                 Text(
                     text = cat.label,
@@ -325,13 +333,31 @@ fun CategoryFilterBar(
 }
 
 @Composable
-fun VideoCard(video: VideoItem, onClick: () -> Unit) {
+fun VideoCard(
+    video: VideoItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     val isSaved by SavedVideosStore.rememberSavedState(video.id)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "cardPressScale"
+    )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(bottom = 4.dp)
     ) {
         Box(
@@ -342,7 +368,10 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit) {
                 .background(Brush.linearGradient(listOf(WahaCardBg2, WahaCardBg)))
         ) {
             AsyncImage(
-                model = video.displayThumbnailUrl(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(video.displayThumbnailUrl())
+                    .crossfade(220)
+                    .build(),
                 contentDescription = video.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -437,6 +466,14 @@ fun WahaBottomNavigation(
                     horizontalPadding = 10.dp,
                     onClick = { onScreenSelect(WahaScreen.Saved) }
                 )
+                BottomNavItem(
+                    selected = selectedScreen == WahaScreen.History,
+                    outlinedIcon = Icons.Outlined.History,
+                    filledIcon = Icons.Filled.History,
+                    label = "السجل",
+                    horizontalPadding = 10.dp,
+                    onClick = { onScreenSelect(WahaScreen.History) }
+                )
             }
         }
     } else {
@@ -473,6 +510,13 @@ fun WahaBottomNavigation(
                         label = "محفوظاتي",
                         onClick = { onScreenSelect(WahaScreen.Saved) }
                     )
+                    BottomNavItem(
+                        selected = selectedScreen == WahaScreen.History,
+                        outlinedIcon = Icons.Outlined.History,
+                        filledIcon = Icons.Filled.History,
+                        label = "السجل",
+                        onClick = { onScreenSelect(WahaScreen.History) }
+                    )
                 }
             }
         }
@@ -495,10 +539,23 @@ private fun BottomNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
+        // Selection pops the icon with a small bounce.
+        val iconScale by animateFloatAsState(
+            targetValue = if (selected) 1.12f else 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            ),
+            label = "navIconScale"
+        )
         Icon(
             imageVector = if (selected) filledIcon else outlinedIcon,
             contentDescription = null,
-            tint = if (selected) WahaTealBright else WahaTextMuted
+            tint = if (selected) WahaTealBright else WahaTextMuted,
+            modifier = Modifier.graphicsLayer {
+                scaleX = iconScale
+                scaleY = iconScale
+            }
         )
         Text(
             text = label,

@@ -66,7 +66,7 @@ class WahaHomeViewModel(
         id = id,
         youtubeId = id,
         title = title ?: "بدون عنوان",
-        meta = category?.let { categoryLabels[it] ?: it } ?: "",
+        meta = category.orEmpty(),
         thumbnailUrl = thumbnail?.takeIf { it.isNotBlank() },
         categoryKey = category,
         durationText = duration

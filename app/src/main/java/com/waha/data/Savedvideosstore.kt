@@ -38,8 +38,6 @@ object SavedVideosStore {
         persist()
     }
 
-    fun isSaved(videoId: String): Boolean = savedIds.contains(videoId)
-
     private fun persist() {
         val context = appContext ?: return
         val snapshot = savedIds.toSet()
