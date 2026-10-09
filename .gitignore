@@ -3,7 +3,11 @@
 /local.properties
 /.idea
 .DS_Store
+# Build output, per module (multi-module layout).
 /build
+/core/build
+/mobile/build
+/tv/build
 /captures
 .externalNativeBuild
 .cxx

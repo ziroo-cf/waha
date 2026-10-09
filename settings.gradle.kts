@@ -25,5 +25,10 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Waha"
-include(":app")
- 
+
+// :core  — shared business/data layer (no phone or TV UI).
+// :mobile — touch-first phone & tablet UI.
+// :tv     — Android TV UI.
+include(":core")
+include(":mobile")
+include(":tv")
