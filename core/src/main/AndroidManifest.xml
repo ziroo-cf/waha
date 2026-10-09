@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  :core is a pure logic/data library: it declares no components, permissions or
+  resources. Every manifest entry lives in the UI modules (:mobile, :tv).
+-->
+<manifest />

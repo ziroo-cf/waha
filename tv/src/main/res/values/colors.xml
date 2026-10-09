@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Referenced by the shared adaptive launcher icon in mipmap-anydpi-v26. -->
+    <color name="ic_launcher_background">#FF6D00</color>
+</resources>

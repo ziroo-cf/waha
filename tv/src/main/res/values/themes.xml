@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- The window starts black so there is no light flash before Compose draws,
+         exactly like the phone build. -->
+    <style name="Theme.Waha.Tv" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>
