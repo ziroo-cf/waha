@@ -16,7 +16,12 @@ android {
         minSdk = 24
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1b"
+        // The TV build keeps its own version string; the phone build ships as "0.3b".
+        versionName = "0.3.1"
+
+        // The D-pad/focus tests under src/androidTest run on a device or TV
+        // emulator (landscape, 16:9 — see the android-tv-testing skill).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -34,6 +39,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // Settings shows BuildConfig.VERSION_NAME.
+        buildConfig = true
     }
 }
 
@@ -53,6 +60,9 @@ dependencies {
     // The TV screens reuse the phone build's icons (bookmark, history, home,
     // search) so both apps' affordances stay identical.
     implementation("androidx.compose.material:material-icons-extended")
+    // The player's progress bar is the phone's own Material 3 Slider, from the
+    // same BOM, so the two builds cannot drift into different-looking sliders.
+    implementation(libs.androidx.compose.material3)
 
     // Compose for TV: focus-aware (D-pad first) Material components.
     // androidx.tv:tv-foundation is deliberately not declared: its 1.0.0 artifact
@@ -66,4 +76,15 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation(libs.junit)
+    // TV ViewModel state is verified through its StateFlow, on a virtual clock.
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("app.cash.turbine:turbine:1.2.0")
+
+    // Focus and D-pad behaviour is asserted on a real TV surface: press real
+    // remote keys at tagged nodes (never a touch click) and read the focused node.
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

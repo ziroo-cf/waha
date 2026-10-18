@@ -7,6 +7,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
+import com.waha.data.PlayerPreferencesStore
 import com.waha.data.ThemePreferenceStore
 import com.waha.ui.screens.WahaApp
 import com.waha.ui.theme.WahaTheme
@@ -15,6 +16,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ThemePreferenceStore.init(this)
+        PlayerPreferencesStore.init(this)
         applySystemBarStyle()
         setContent {
             WahaTheme {

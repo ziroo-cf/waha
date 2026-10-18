@@ -16,7 +16,13 @@ data class VideoItem(
     val meta: String,
     val thumbnailUrl: String? = null,
     val categoryKey: String? = null,
-    val durationText: String? = null
+    val durationText: String? = null,
+    /**
+     * The channel the video came from. The library does not carry one yet —
+     * everything published is Waha's own channel — but the TV card always shows
+     * a channel line, so the slot (and its fallback) exists from the start.
+     */
+    val channelName: String? = null
 )
 
 /** Best available thumbnail, falling back to YouTube's own artwork. */

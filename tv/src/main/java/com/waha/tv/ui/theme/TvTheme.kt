@@ -1,4 +1,4 @@
-package com.waha.tv
+package com.waha.tv.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider

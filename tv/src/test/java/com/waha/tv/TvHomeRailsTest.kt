@@ -1,6 +1,8 @@
 package com.waha.tv
 
 import com.waha.domain.VideoItem
+import com.waha.tv.ui.screens.TvRails
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -24,80 +26,119 @@ class TvHomeRailsTest {
     )
 
     @Test
-    fun `empty library has no rails`() {
+    fun `empty library has no rows`() {
         assertTrue(TvRails.build(emptyList()).isEmpty())
     }
 
     @Test
-    fun `latest rail comes first and holds the whole library`() {
-        val rails = TvRails.build(library)
+    fun `the all row comes first and holds the whole library`() {
+        val rails = TvRails.build(library, Random(7))
 
-        assertEquals(TvRails.LATEST_RAIL_KEY, rails.first().key)
-        assertEquals(TvRails.LATEST_RAIL_TITLE, rails.first().title)
-        assertEquals(listOf("a", "b", "c", "d"), rails.first().videos.map { it.id })
+        val all = rails.first()
+        assertEquals(TvRails.ALL_RAIL_KEY, all.key)
+        assertEquals("الكل", all.title)
+        // Every video is reachable from "الكل" — including the uncategorised one,
+        // which has no category row of its own.
+        assertEquals(setOf("a", "b", "c", "d"), all.videos.map { it.id }.toSet())
     }
 
     @Test
-    fun `one rail per category, alphabetically, skipping uncategorised videos`() {
-        val rails = TvRails.build(library)
-        val categoryRails = rails.drop(1)
+    fun `one row per category from the data, alphabetically, and no latest row`() {
+        val rails = TvRails.build(library, Random(7))
 
-        // Arabic alphabetical order puts "أطفال" before "طبخ".
-        assertEquals(listOf("أطفال", "طبخ"), categoryRails.map { it.key })
-        assertEquals(listOf("a", "c"), categoryRails.first().videos.map { it.id })
-        assertEquals(listOf("b"), categoryRails.last().videos.map { it.id })
-        // The category-less video only appears in the latest rail.
-        assertTrue(rails.none { rail -> rail.videos.any { it.id == "d" } && rail.key != TvRails.LATEST_RAIL_KEY })
+        // Arabic alphabetical order puts "أطفال" before "طبخ". These names are not
+        // written in the app: they are whatever the library's category column says.
+        assertEquals(listOf(TvRails.ALL_RAIL_KEY, "أطفال", "طبخ"), rails.map { it.key })
+        assertEquals(listOf("الكل", "أطفال", "طبخ"), rails.map { it.title })
+        assertEquals(setOf("a", "c"), rails[1].videos.map { it.id }.toSet())
+        assertEquals(listOf("b"), rails[2].videos.map { it.id })
+        // There is no "latest additions" shelf: "الكل" replaces it.
+        assertTrue(rails.none { it.title == "أحدث الإضافات" })
     }
 
     @Test
-    fun `blank categories do not produce a nameless rail`() {
-        val rails = TvRails.build(listOf(video("a", "  "), video("b", "طبخ")))
+    fun `a category the app has never seen gets its own row`() {
+        val rails = TvRails.build(listOf(video("a", "علوم"), video("b", "أطفال")), Random(7))
 
-        assertEquals(listOf(TvRails.LATEST_RAIL_KEY, "طبخ"), rails.map { it.key })
+        assertEquals(listOf(TvRails.ALL_RAIL_KEY, "أطفال", "علوم"), rails.map { it.key })
+        assertEquals(listOf("a"), rails.last().videos.map { it.id })
     }
 
     @Test
-    fun `rails are capped so a huge library still browses comfortably`() {
+    fun `a video without a category has no row of its own but stays in the all row`() {
+        val rails = TvRails.build(library, Random(7))
+
+        assertTrue(rails.drop(1).none { rail -> rail.videos.any { it.id == "d" } })
+        assertTrue(rails.first().videos.any { it.id == "d" })
+    }
+
+    @Test
+    fun `blank categories do not produce a nameless row`() {
+        val rails = TvRails.build(listOf(video("a", "  "), video("b", "طبخ")), Random(7))
+
+        assertEquals(listOf(TvRails.ALL_RAIL_KEY, "طبخ"), rails.map { it.key })
+    }
+
+    @Test
+    fun `every row holds twenty videos`() {
         val many = (1..(TvRails.MAX_RAIL_ITEMS + 5)).map { video("v$it", "قسم") }
-        val rails = TvRails.build(many)
 
-        assertEquals(TvRails.MAX_RAIL_ITEMS, rails.first().videos.size)
-        assertEquals(TvRails.MAX_RAIL_ITEMS, rails.last().videos.size)
+        assertEquals(20, TvRails.MAX_RAIL_ITEMS)
+        TvRails.build(many, Random(7)).forEach { rail ->
+            assertEquals(rail.key, TvRails.MAX_RAIL_ITEMS, rail.videos.size)
+        }
     }
 
     @Test
-    fun `filtering by all keeps every rail`() {
-        val rails = TvRails.build(library)
-        assertEquals(rails, TvRails.filter(rails, TvRails.ALL_CATEGORY_KEY))
-        assertEquals(rails, TvRails.filter(rails, null))
+    fun `the cap is per row, so one big category cannot eat another`() {
+        val many = (1..(TvRails.MAX_RAIL_ITEMS + 5)).map { video("a$it", "أطفال") } +
+                (1..(TvRails.MAX_RAIL_ITEMS + 5)).map { video("b$it", "طبخ") }
+        val rails = TvRails.build(many, Random(7))
+
+        assertEquals(3, rails.size)
+        rails.forEach { rail -> assertEquals(TvRails.MAX_RAIL_ITEMS, rail.videos.size) }
+        // Each category row is drawn from its own category, never from the other one.
+        assertTrue(rails[1].videos.all { it.id.startsWith("a") })
+        assertTrue(rails[2].videos.all { it.id.startsWith("b") })
     }
 
     @Test
-    fun `filtering by a category keeps only that category`() {
-        val rails = TvRails.build(library)
-        val filtered = TvRails.filter(rails, "طبخ")
+    fun `a category row is a random sample, not always its newest twenty`() {
+        val many = (1..30).map { video("v$it", "رسوم متحركة") }
 
-        // Exactly what the phone's grid does when its chip is tapped: only the
-        // chosen category survives, promoted to the top so the hero uses it.
-        assertEquals(1, filtered.size)
-        assertEquals(TvRails.LATEST_RAIL_KEY, filtered.first().key)
-        assertEquals(TvRails.LATEST_RAIL_TITLE, filtered.first().title)
-        assertEquals(listOf("b"), filtered.first().videos.map { it.id })
-    }
+        val rail = TvRails.build(many, Random(3)).first { it.key == "رسوم متحركة" }
 
-    @Test
-    fun `filtering by an unknown category is a no-op`() {
-        val rails = TvRails.build(library)
-        assertEquals(rails, TvRails.filter(rails, "لا يوجد"))
-    }
-
-    @Test
-    fun `tiles start with all and list the real categories`() {
-        assertEquals(
-            listOf(TvRails.ALL_CATEGORY_KEY, "أطفال", "طبخ"),
-            TvRails.categoryTiles(library).map { it.key }
+        val newestTwenty = (1..20).map { "v$it" }.toSet()
+        assertEquals(TvRails.MAX_RAIL_ITEMS, rail.videos.size)
+        assertEquals(rail.videos.size, rail.videos.map { it.id }.toSet().size)
+        assertTrue(
+            "the row must not be the same newest twenty every time",
+            rail.videos.any { it.id !in newestTwenty }
         )
-        assertEquals("الكل", TvRails.categoryTiles(library).first().label)
+    }
+
+    @Test
+    fun `the all row is a random sample of the whole library`() {
+        val many = (1..30).map { video("v$it", "رسوم متحركة") }
+
+        val all = TvRails.build(many, Random(3)).first()
+
+        val newestTwenty = (1..20).map { "v$it" }.toSet()
+        assertEquals(TvRails.MAX_RAIL_ITEMS, all.videos.size)
+        assertTrue(all.videos.any { it.id !in newestTwenty })
+    }
+
+    @Test
+    fun `the shuffle sits inside each row's own context`() {
+        // Two categories of the same size: neither row may borrow the other's videos,
+        // and with the same seed two builds produce the same shelves.
+        val many = (1..10).map { video("a$it", "أطفال") } + (1..10).map { video("b$it", "طبخ") }
+
+        val first = TvRails.build(many, Random(11))
+        val second = TvRails.build(many, Random(11))
+
+        assertEquals(first.map { it.videos.map(VideoItem::id) }, second.map { it.videos.map(VideoItem::id) })
+        assertTrue(first[1].videos.all { it.categoryKey == "أطفال" })
+        assertTrue(first[2].videos.all { it.categoryKey == "طبخ" })
     }
 }

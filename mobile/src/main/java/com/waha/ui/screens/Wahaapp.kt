@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.waha.data.PlayerPreferencesStore
 import com.waha.data.RecentSearchesStore
 import com.waha.data.SavedVideosStore
 import com.waha.data.WatchHistoryStore
@@ -40,10 +41,21 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
         SavedVideosStore.init(context)
         RecentSearchesStore.init(context)
         WatchHistoryStore.init(context)
+        PlayerPreferencesStore.init(context)
     }
 
     var currentScreen by remember { mutableStateOf(WahaScreen.Home) }
     var activeVideo by remember { mutableStateOf<VideoItem?>(null) }
+    // The position the player should resume from for [activeVideo].
+    var resumeFromMs by remember { mutableStateOf(0L) }
+
+    // Every entry point into the player goes through here, so a partly-watched
+    // video always picks up where it stopped — the Continue Watching row and a
+    // plain grid tap behave identically.
+    fun openVideo(video: VideoItem) {
+        resumeFromMs = WatchHistoryStore.resumePositionMs(video.id)
+        activeVideo = video
+    }
     var showSearch by remember { mutableStateOf(false) }
     var isChromeVisible by remember { mutableStateOf(true) }
     var selectedCategory by remember { mutableStateOf(ALL_CATEGORY_KEY) }
@@ -87,7 +99,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                     topBarHeight = topBarHeight,
                     bottomBarHeight = bottomBarHeight,
                     selectedCategory = selectedCategory,
-                    onVideoClick = { activeVideo = it },
+                    onVideoClick = ::openVideo,
                     onChromeVisibilityChange = { isChromeVisible = it },
                     sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
@@ -100,7 +112,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                     allVideos = allVideos,
                     topBarHeight = topBarHeight,
                     bottomBarHeight = bottomBarHeight,
-                    onVideoClick = { activeVideo = it },
+                    onVideoClick = ::openVideo,
                     onChromeVisibilityChange = { isChromeVisible = it },
                     sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
@@ -108,7 +120,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                     allVideos = allVideos,
                     topBarHeight = topBarHeight,
                     bottomBarHeight = bottomBarHeight,
-                    onVideoClick = { activeVideo = it },
+                    onVideoClick = ::openVideo,
                     onChromeVisibilityChange = { isChromeVisible = it },
                     sideBarPadding = if (useTabletLayout) sideBarWidth else 0.dp
                 )
@@ -188,7 +200,7 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
             SearchOverlay(
                 allVideos = allVideos,
                 onVideoClick = {
-                    activeVideo = it
+                    openVideo(it)
                     showSearch = false
                 },
                 onClose = { showSearch = false }
@@ -208,8 +220,9 @@ fun WahaApp(viewModel: WahaHomeViewModel = viewModel()) {
                 VideoPlayerModal(
                     video = video,
                     allVideos = allVideos,
-                    onVideoSelect = { selected -> activeVideo = selected },
-                    onClose = { activeVideo = null }
+                    onVideoSelect = ::openVideo,
+                    onClose = { activeVideo = null },
+                    startPositionMs = resumeFromMs
                 )
             }
         }

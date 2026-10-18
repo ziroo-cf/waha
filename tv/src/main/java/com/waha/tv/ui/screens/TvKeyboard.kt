@@ -1,4 +1,4 @@
-package com.waha.tv
+package com.waha.tv.ui.screens
 
 /** Longest query the TV search field accepts. */
 const val TV_QUERY_MAX_LENGTH = 60

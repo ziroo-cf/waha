@@ -1,4 +1,4 @@
-package com.waha.tv
+package com.waha.tv.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

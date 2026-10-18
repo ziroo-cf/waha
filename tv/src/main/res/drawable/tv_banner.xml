@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android TV banner (the leanback launcher's 320x180 artwork): the brand's
+    sunset-and-oasis mark, with a play glyph standing in for the sun.
+    Vector drawable so one file covers every TV density.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Night-sky background, matching the app's dark default. -->
+    <path
+        android:fillColor="#0B0F0D"
+        android:pathData="M0,0h320v180h-320z" />
+
+    <!-- Sand dunes settling at the bottom, in the brand green. -->
+    <path
+        android:fillColor="#0E8539"
+        android:pathData="M0,134 C58,110 104,158 162,132 C214,108 268,136 320,116 L320,180 L0,180 Z" />
+
+    <!-- The brand-orange sun, with a play triangle punched out of the middle. -->
+    <path
+        android:fillColor="#FF6600"
+        android:pathData="M160,58m-38,0a38,38 0 1,0 76,0a38,38 0 1,0 -76,0" />
+    <path
+        android:fillColor="#0B0F0D"
+        android:pathData="M150,42 l26,16 -26,16 z" />
+
+    <!-- A darker dune in front, for depth. -->
+    <path
+        android:fillColor="#0A5C29"
+        android:pathData="M0,158 C72,138 128,172 200,152 C252,138 292,158 320,148 L320,180 L0,180 Z" />
+</vector>

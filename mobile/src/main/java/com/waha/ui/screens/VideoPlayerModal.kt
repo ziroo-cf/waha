@@ -62,6 +62,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.waha.data.PlayerPreferencesStore
 import com.waha.data.SavedVideosStore
 import com.waha.data.WatchHistoryStore
 import com.waha.domain.PlaybackResolver
@@ -134,7 +135,9 @@ fun VideoPlayerModal(
     video: VideoItem,
     allVideos: List<VideoItem>,
     onVideoSelect: (VideoItem) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    /** Where playback starts — the Continue Watching row passes the saved position. */
+    startPositionMs: Long = 0L
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -153,7 +156,9 @@ fun VideoPlayerModal(
     var isPlaying by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableStateOf(1f) }
-    var qualityHeight by remember { mutableStateOf<Int?>(null) }
+    // The chosen quality belongs to the viewer, so it starts from (and is saved
+    // to) the shared preference instead of resetting on every open.
+    var qualityHeight by remember { mutableStateOf(PlayerPreferencesStore.qualityHeight.value) }
     var playback by remember(video.id) { mutableStateOf<PlaybackState>(PlaybackState.Loading) }
     var retryKey by remember { mutableStateOf(0) }
 
@@ -166,12 +171,29 @@ fun VideoPlayerModal(
     val player = remember(context) { WahaPlayer.create(context) }
     val currentVideo by rememberUpdatedState(video)
 
+    /**
+     * Remembers where [videoId] stopped. Called on pause and when the player
+     * leaves the screen, which is what the Continue Watching list resumes from.
+     */
+    fun saveProgress(videoId: String) {
+        runCatching {
+            WatchHistoryStore.updateProgress(
+                videoId = videoId,
+                positionMs = player.currentPosition.coerceAtLeast(0L),
+                totalDurationMs = player.duration.coerceAtLeast(0L)
+            )
+        }
+    }
+
     DisposableEffect(context, player) {
         val mediaSession = MediaSession.Builder(context, player).build()
 
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                // Remember the spot on every pause, not just on close: the app
+                // can be killed from the background at any moment.
+                if (!playing) saveProgress(currentVideo.id)
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -195,8 +217,14 @@ fun VideoPlayerModal(
         }
     }
 
+    // Registered after the player (so it forgets first): the last known position
+    // is still readable when this runs. This is what Continue Watching picks up.
+    DisposableEffect(video.id) {
+        onDispose { saveProgress(video.id) }
+    }
+
     LaunchedEffect(video.id) {
-        resumeFrom = 0L
+        resumeFrom = startPositionMs.coerceAtLeast(0L)
         listState.scrollToItem(0)
         showSettings = false
         controlsVisible = true
@@ -508,6 +536,7 @@ fun VideoPlayerModal(
             onQualitySelect = {
                 if (it != qualityHeight) resumeFrom = player.currentPosition
                 qualityHeight = it
+                PlayerPreferencesStore.setQualityHeight(it)
                 showSettings = false
             },
             onDismiss = { showSettings = false }

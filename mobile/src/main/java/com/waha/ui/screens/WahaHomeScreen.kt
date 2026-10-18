@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -55,12 +56,20 @@ import coil.request.ImageRequest
 // The logo ships with :core so the TV build shows the identical artwork.
 import com.waha.core.R as CoreR
 import com.waha.data.SavedVideosStore
+import com.waha.data.WatchHistoryStore
 import com.waha.domain.VideoItem
+import com.waha.domain.continueWatching
 import com.waha.domain.displayThumbnailUrl
 import com.waha.ui.theme.*
 
 /** Key of the "الكل" (all categories) filter tile. */
 const val ALL_CATEGORY_KEY = "all"
+
+/** Title of the Continue Watching row at the top of Home. */
+const val CONTINUE_WATCHING_TITLE = "أكمل المشاهدة"
+
+/** Stable grid key for that row. */
+private const val CONTINUE_WATCHING_ROW_KEY = "continue_watching_row"
 
 data class CategoryFilterTile(val key: String, val label: String)
 
@@ -192,6 +201,24 @@ fun WahaHomeScreen(
 
                 listState.HideOnScrollEffect(onVisibilityChange = onChromeVisibilityChange)
 
+                // "أكمل المشاهدة": only on the unfiltered home, since it is
+                // about the viewer's progress rather than a category.
+                val continueWatchingEntries = remember(
+                    state.videos,
+                    WatchHistoryStore.recentIds.size,
+                    WatchHistoryStore.watchedAtMs.value,
+                    WatchHistoryStore.lastPositionMs.value,
+                    WatchHistoryStore.durationMs.value
+                ) {
+                    WatchHistoryStore.continueWatching()
+                }
+                val progressById = remember(continueWatchingEntries) {
+                    continueWatchingEntries.associate { it.videoId to it.progressFraction }
+                }
+                val continueWatching = remember(state.videos, continueWatchingEntries) {
+                    state.videos.continueWatching(continueWatchingEntries)
+                }
+
                 if (displayedVideos.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("لا توجد اي فيديوهات في هذه الفئة بعد", color = WahaTextMuted)
@@ -209,6 +236,16 @@ fun WahaHomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(if (columns > 1) 8.dp else 0.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        if (selectedCategory == ALL_CATEGORY_KEY && continueWatching.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = CONTINUE_WATCHING_ROW_KEY) {
+                                ContinueWatchingRow(
+                                    videos = continueWatching,
+                                    progress = { video -> progressById[video.id] ?: 0f },
+                                    onVideoClick = onVideoClick
+                                )
+                            }
+                        }
+
                         items(displayedVideos, key = { it.id }) { video ->
                             VideoCard(
                                 video = video,
@@ -319,6 +356,113 @@ fun CategoryFilterBar(
                 )
             }
         }
+    }
+}
+
+/**
+ * The phone build's "أكمل المشاهدة" row: the viewer's unfinished videos, each
+ * with a thin progress bar showing how far they got, newest first.
+ */
+@Composable
+private fun ContinueWatchingRow(
+    videos: List<VideoItem>,
+    progress: (VideoItem) -> Float,
+    onVideoClick: (VideoItem) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 8.dp)
+    ) {
+        Text(
+            text = CONTINUE_WATCHING_TITLE,
+            color = WahaTextWarm,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(videos, key = { it.id }) { video ->
+                ContinueWatchingCard(
+                    video = video,
+                    progress = progress(video),
+                    onClick = { onVideoClick(video) }
+                )
+            }
+        }
+    }
+}
+
+/** One card of [ContinueWatchingRow]: artwork, a progress bar, and the title. */
+@Composable
+private fun ContinueWatchingCard(
+    video: VideoItem,
+    progress: Float,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(196.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(WahaCardBg2)
+        ) {
+            AsyncImage(
+                model = video.displayThumbnailUrl(),
+                contentDescription = video.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(36.dp)
+                    .background(Color.Black.copy(alpha = 0.35f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // How far the viewer got — the reason this row exists.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(Color.Black.copy(alpha = 0.45f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress.coerceIn(0f, 1f))
+                        .background(WahaTeal)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = video.title,
+            color = WahaTextWarm,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
