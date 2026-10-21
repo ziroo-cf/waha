@@ -158,8 +158,7 @@ fun TvVideoCard(
     /** 0f..1f watched so far; draws a thin progress bar over the artwork. */
     progressFraction: Float? = null
 ) {
-    val savedIds = SavedVideosStore.savedIds
-    val isSaved = remember(savedIds.size, video.id) { savedIds.contains(video.id) }
+    val isSaved = SavedVideosStore.isSaved(video.id)
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 

@@ -80,7 +80,9 @@ import com.waha.ui.theme.WahaTeal
 import com.waha.ui.theme.WahaTealBright
 import com.waha.ui.theme.WahaTextMuted
 import com.waha.ui.theme.WahaTextWarm
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.media3.session.MediaSession
 
 /** Playback speeds offered in the player's settings sheet. */
@@ -143,9 +145,15 @@ fun VideoPlayerModal(
     val activity = context as? Activity
 
     val isSaved by SavedVideosStore.rememberSavedState(video.id)
-    val watchedIds = WatchHistoryStore.recentIds.toSet()
-    val suggestions = remember(video.id, allVideos, watchedIds) {
-        VideoSuggestionsEngine.build(video, allVideos, watchedIds)
+    // derivedStateOf so a saved playback position (which only moves the position
+    // maps) does not invalidate this whole player: only a changed watched set does.
+    val watchedIds by remember { derivedStateOf { WatchHistoryStore.watchedIds } }
+    // Ranking thousands of titles takes long enough to drop frames, so it runs off
+    // the main thread and the rail fills in as soon as the result is ready.
+    val suggestions by produceState(emptyList(), video.id, allVideos, watchedIds) {
+        value = withContext(Dispatchers.Default) {
+            VideoSuggestionsEngine.build(video, allVideos, watchedIds)
+        }
     }
     val listState = rememberLazyGridState()
     val columns = rememberWahaWindowInfo().gridColumns

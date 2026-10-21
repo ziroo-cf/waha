@@ -95,7 +95,9 @@ data class VideoRow(
     val status: String = "pending",
     // Accepts seconds (number) or "m:ss"/"h:mm:ss"/ISO text; null/absent hides the badge.
     @Serializable(with = FlexibleDurationSerializer::class)
-    val duration: Duration? = null
+    val duration: Duration? = null,
+    // Publication time, the ordering key and the first half of the keyset cursor.
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 /** Formats a duration as "m:ss" (or "h:mm:ss" past one hour) for thumbnail badges. */

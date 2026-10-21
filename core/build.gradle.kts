@@ -13,6 +13,8 @@ val localProperties = Properties().apply {
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.serialization)
+    // Room generates the DAO implementations and the schema at build time.
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -47,6 +49,12 @@ android {
     }
 }
 
+ksp {
+    // Versioned schemas are the input for Room's migration tests and for any
+    // future migration: without them a schema change is a guessing game.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // Data layer. postgrest is exposed because SupabaseClientProvider.client is
     // part of this module's public API.
@@ -54,6 +62,10 @@ dependencies {
     api("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.ktor:ktor-client-android:3.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // Offline-first library cache: Room is the single source of truth the UI reads.
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
 
     // Local stores (Compose snapshot state, DataStore preferences).
     implementation(libs.androidx.compose.runtime)

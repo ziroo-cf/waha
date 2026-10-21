@@ -2,11 +2,13 @@ package com.waha.tv
 
 import app.cash.turbine.test
 import com.waha.data.VideoRepository
-import com.waha.data.VideoRow
+import com.waha.domain.VideoItem
 import com.waha.tv.ui.screens.TvHomeViewModel
 import com.waha.tv.ui.screens.TvUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -22,6 +24,10 @@ import org.junit.Test
  * The browse screen's state machine, asserted through its StateFlow on a virtual
  * clock: a TV has nowhere to show a spinner-and-error-and-retry tangle, so the
  * three states have to arrive in the right order, once each.
+ *
+ * The ViewModel now reads the library from the (Room-backed) cache stream and
+ * asks the repository to sync separately, so the fake stands in for both: a
+ * flow of cached videos and a refresh that can fail.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TvHomeViewModelTest {
@@ -30,16 +36,23 @@ class TvHomeViewModelTest {
 
     /** A library that can be made to fail, so the error path is reachable. */
     private class FakeRepository : VideoRepository() {
-        var rows: List<VideoRow> = emptyList()
+        /** Stands in for Room: the ViewModel observes it, never reads it directly. */
+        val cached = MutableStateFlow<List<VideoItem>>(emptyList())
         var failure: Exception? = null
 
-        override suspend fun getVideos(): List<VideoRow> {
+        override fun observeVideos(): Flow<List<VideoItem>> = cached
+
+        override suspend fun refresh(force: Boolean) {
             failure?.let { throw it }
-            return rows
         }
     }
 
-    private fun row(id: String) = VideoRow(id = id, title = "فيديو $id")
+    private fun row(id: String) = VideoItem(
+        id = id,
+        youtubeId = id,
+        title = "فيديو $id",
+        meta = ""
+    )
 
     @Before
     fun setUp() {
@@ -53,7 +66,9 @@ class TvHomeViewModelTest {
 
     @Test
     fun `the library flows from loading to ready`() = runTest {
-        val repository = FakeRepository().apply { rows = listOf(row("v1"), row("v2")) }
+        val repository = FakeRepository().apply {
+            cached.value = listOf(row("v1"), row("v2"))
+        }
         val viewModel = TvHomeViewModel(repository)
 
         viewModel.uiState.test {
@@ -84,12 +99,17 @@ class TvHomeViewModelTest {
             assertEquals("لا يوجد اتصال", (error as TvUiState.Error).message)
 
             repository.failure = null
-            repository.rows = listOf(row("v9"))
             viewModel.loadVideos()
 
             assertEquals(TvUiState.Loading, awaitItem())
+
+            // The retry lands in the cache; the screen follows the cache.
+            repository.cached.value = listOf(row("v9"))
             advanceUntilIdle()
-            assertTrue(awaitItem() is TvUiState.Ready)
+            assertEquals(
+                listOf("v9"),
+                (awaitItem() as TvUiState.Ready).videos.map { it.id }
+            )
 
             cancelAndIgnoreRemainingEvents()
         }

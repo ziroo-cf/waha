@@ -39,11 +39,12 @@ fun WatchHistoryScreen(
     onChromeVisibilityChange: (Boolean) -> Unit = {},
     sideBarPadding: Dp = 0.dp
 ) {
-    val historyVideos = remember(allVideos, WatchHistoryStore.recentIds.size) {
+    val history = WatchHistoryStore.snapshot
+    val historyVideos = remember(allVideos, history.recentIds) {
         val byId = allVideos.associateBy { it.id }
-        WatchHistoryStore.recentIds.mapNotNull { byId[it] }
+        history.recentIds.mapNotNull { byId[it] }
     }
-    val watchedAt = WatchHistoryStore.watchedAtMs.value
+    val watchedAt = history.watchedAtMs
     val listState = rememberLazyGridState()
     val columns = rememberWahaWindowInfo().gridColumns
 

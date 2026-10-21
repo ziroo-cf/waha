@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.system.measureNanoTime
 
 /**
  * Verifies the suggestion scorer that now lives in :core: the next episode wins
@@ -232,5 +233,92 @@ class SuggestionsTest {
             setOf("stories", "songs", "nursery"),
             suggestions.mapNotNull { it.categoryKey }.toSet()
         )
+    }
+
+    @Test
+    fun `an unchanged ranking is served from the cache`() {
+        val current = video("aaaaaaaaaaa", "Cartoon Blue Episode 2")
+        val all = (1..50).map { video("v%02d".format(it), "Video $it") }
+
+        val first = VideoSuggestionsEngine.build(current, all)
+        val second = VideoSuggestionsEngine.build(current, all)
+
+        // Same instance: the player reopening must not re-score the library.
+        assertTrue("the second build should be a cache hit", first === second)
+    }
+
+    @Test
+    fun `recording the current video does not change the rail`() {
+        val current = video("aaaaaaaaaaa", "Cartoon Blue Episode 2")
+        val all = (1..20).map { video("v%02d".format(it), "Video $it") }
+
+        val before = VideoSuggestionsEngine.build(current, all)
+        // Opening the player records the current video; it is excluded from its own
+        // suggestions either way, so the rail must be identical.
+        val after = VideoSuggestionsEngine.build(current, all, watchedIds = setOf(current.id))
+
+        assertEquals(before.map { it.id }, after.map { it.id })
+    }
+
+    @Test
+    fun `large libraries still mix categories`() {
+        val current = video("current0001", "Current Video")
+        val kids = (0 until 5_000).map { video("k%05d".format(it), "Kids $it", "kids") }
+        val songs = (0 until 5_000).map { video("s%05d".format(it), "Song $it", "songs") }
+        val all = listOf(current) + kids + songs
+
+        val suggestions = VideoSuggestionsEngine.build(current, all)
+
+        assertEquals(DEFAULT_SUGGESTION_COUNT, suggestions.size)
+        // The whole kids block outranks the songs block, so the diversifier still
+        // has to reach past it instead of showing twenty kids videos.
+        assertTrue(
+            "expected more than one category, got ${suggestions.map { it.categoryKey }}",
+            suggestions.mapNotNull { it.categoryKey }.toSet().size >= 2
+        )
+        suggestions.windowed(3).forEach { triple ->
+            assertFalse(
+                "run of same category: ${triple.map { it.title }}",
+                triple.all { it.categoryKey != null } && triple.map { it.categoryKey }.toSet().size == 1
+            )
+        }
+    }
+
+    /** Warm rebuild time in millis for a library of [size] unique titles. */
+    private fun rebuildMillis(size: Int): Long {
+        val library = (0 until size).map { video("v%06d".format(it), "فيديو$it", "kids") }
+        val current = video("current0001", "فيديو مختلف")
+        VideoSuggestionsEngine.clearCaches()
+
+        val cold = measureNanoTime {
+            VideoSuggestionsEngine.build(current, library, emptySet())
+        }
+        // A different watched set is a cache miss, so these measure the scoring
+        // path itself with the title index already warm; the fastest of several
+        // runs is the steady state the player sees.
+        var fastest = Long.MAX_VALUE
+        for (run in 1..5) {
+            val elapsed = measureNanoTime {
+                VideoSuggestionsEngine.build(current, library, setOf("other-$run"))
+            }
+            if (elapsed < fastest) fastest = elapsed
+        }
+        println(
+            "suggestions ${size}: cold=${cold / 1_000_000}ms " +
+                "rebuild=${fastest / 1_000_000}ms"
+        )
+        return fastest / 1_000_000
+    }
+
+    @Test
+    fun `ranking a large library stays fast once titles are indexed`() {
+        val fiveThousand = rebuildMillis(5_000)
+        val twentyThousand = rebuildMillis(20_000)
+
+        // Generous bounds: these are JVM sanity checks against a regression to the
+        // old repeated tokenisation (163ms for 5k, 504ms for 20k on this machine),
+        // not device timings. The measured steady state is ~4-8ms and ~55ms.
+        assertTrue("re-ranking 5k videos took ${fiveThousand}ms", fiveThousand < 60)
+        assertTrue("re-ranking 20k videos took ${twentyThousand}ms", twentyThousand < 300)
     }
 }

@@ -45,12 +45,12 @@ class TvPlayerPanelSaveTest {
 
     @Before
     fun clearSaves() {
-        SavedVideosStore.savedIds.clear()
+        SavedVideosStore.clear()
     }
 
     @After
     fun clearSavesAgain() {
-        SavedVideosStore.savedIds.clear()
+        SavedVideosStore.clear()
     }
 
     /** The node the remote is currently on (merged, so a pill counts as one control). */

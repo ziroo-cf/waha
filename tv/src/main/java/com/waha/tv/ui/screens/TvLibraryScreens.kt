@@ -35,15 +35,16 @@ fun TvLibraryScreen(
 ) {
     // Keyed on the ids themselves (not just their count) so saving or un-saving a
     // video, or reordering the history, redraws the rows immediately.
-    val savedIds = SavedVideosStore.savedIds.toList()
+    val savedIds = SavedVideosStore.savedIds
     val savedVideos = remember(allVideos, savedIds) {
         allVideos.filter { it.id in savedIds }
     }
 
-    val watchedAt = WatchHistoryStore.watchedAtMs.value
-    val historyVideos = remember(allVideos, WatchHistoryStore.recentIds.toList()) {
+    val history = WatchHistoryStore.snapshot
+    val watchedAt = history.watchedAtMs
+    val historyVideos = remember(allVideos, history.recentIds) {
         val byId = allVideos.associateBy { it.id }
-        WatchHistoryStore.recentIds.mapNotNull { byId[it] }
+        history.recentIds.mapNotNull { byId[it] }
     }
 
     if (savedVideos.isEmpty() && historyVideos.isEmpty()) {

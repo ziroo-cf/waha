@@ -90,16 +90,19 @@ fun DurationBadge(durationText: String) {
 /** Compose-friendly saved state that updates automatically when the video is toggled elsewhere. */
 @Composable
 fun SavedVideosStore.rememberSavedState(videoId: String): State<Boolean> {
-    val savedIds = SavedVideosStore.savedIds
-    // Key on videoId so switching videos (e.g. in the player) re-derives for the new video.
-    return remember(videoId) { derivedStateOf { savedIds.contains(videoId) } }
+    // Key on videoId so switching videos (e.g. in the player) re-derives for the new video;
+    // the snapshot read inside derivedStateOf is what subscribes it to toggles.
+    return remember(videoId) { derivedStateOf { SavedVideosStore.isSaved(videoId) } }
 }
 
 @Composable
 fun SavedVideosStore.savedVideosState(allVideos: List<VideoItem>): List<VideoItem> {
-    // Reading the snapshot list here subscribes the composition to save/unsave changes.
-    val savedIds = SavedVideosStore.savedIds.toList()
-    return allVideos.filter { video -> savedIds.contains(video.id) }
+    // Reading the saved set here subscribes the composition to save/unsave changes,
+    // and membership is a hash lookup instead of a scan per card.
+    val savedIds = SavedVideosStore.savedIds
+    return remember(allVideos, savedIds) {
+        allVideos.filter { video -> video.id in savedIds }
+    }
 }
 
 /**
@@ -205,10 +208,7 @@ fun WahaHomeScreen(
                 // about the viewer's progress rather than a category.
                 val continueWatchingEntries = remember(
                     state.videos,
-                    WatchHistoryStore.recentIds.size,
-                    WatchHistoryStore.watchedAtMs.value,
-                    WatchHistoryStore.lastPositionMs.value,
-                    WatchHistoryStore.durationMs.value
+                    WatchHistoryStore.snapshot
                 ) {
                     WatchHistoryStore.continueWatching()
                 }

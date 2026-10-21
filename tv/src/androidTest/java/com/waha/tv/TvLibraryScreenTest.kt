@@ -46,14 +46,14 @@ class TvLibraryScreenTest {
 
     @Before
     fun seedEmptyStores() {
-        SavedVideosStore.savedIds.clear()
-        WatchHistoryStore.recentIds.clear()
+        SavedVideosStore.clear()
+        WatchHistoryStore.clear()
     }
 
     @After
     fun clearStores() {
-        SavedVideosStore.savedIds.clear()
-        WatchHistoryStore.recentIds.clear()
+        SavedVideosStore.clear()
+        WatchHistoryStore.clear()
     }
 
     private fun showLibrary() {
@@ -71,8 +71,8 @@ class TvLibraryScreenTest {
 
     @Test
     fun savedAndHistoryAreTwoRowsOfCards() {
-        SavedVideosStore.savedIds.add("v1")
-        WatchHistoryStore.recentIds.add("v2")
+        SavedVideosStore.toggle("v1")
+        WatchHistoryStore.record("v2")
         showLibrary()
 
         // Row 1: المحفوظات with the saved card.
@@ -88,7 +88,7 @@ class TvLibraryScreenTest {
 
     @Test
     fun anEmptyRowExplainsItselfInsteadOfVanishing() {
-        SavedVideosStore.savedIds.add("v1")
+        SavedVideosStore.toggle("v1")
         showLibrary()
 
         scrollToHistoryRow()

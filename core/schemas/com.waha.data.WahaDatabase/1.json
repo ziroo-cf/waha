@@ -1,0 +1,145 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "a6b3f2918e0992ba6a3cde6ab81ba337",
+    "entities": [
+      {
+        "tableName": "videos",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `thumbnail` TEXT, `category` TEXT, `durationSeconds` INTEGER NOT NULL, `durationText` TEXT, `createdAt` TEXT, `syncGeneration` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thumbnail",
+            "columnName": "thumbnail",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationText",
+            "columnName": "durationText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "syncGeneration",
+            "columnName": "syncGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_videos_createdAt_id",
+            "unique": false,
+            "columnNames": [
+              "createdAt",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_videos_createdAt_id` ON `${TABLE_NAME}` (`createdAt`, `id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "sync_metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `lastSyncAtMs` INTEGER NOT NULL, `lastFullSyncAtMs` INTEGER NOT NULL, `completeWalk` INTEGER NOT NULL, `lastCursorCreatedAt` TEXT, `lastCursorId` TEXT, `cachedVideoCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSyncAtMs",
+            "columnName": "lastSyncAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastFullSyncAtMs",
+            "columnName": "lastFullSyncAtMs",
+            "affinity": "INTEGER",
+            "notNull": trueأريدك أن تعمل كـ Senior Android Performance Engineer لتحسين أداء تطبيق "واحة".
+
+سنعمل على مراحل دقيقة، والمرحلة الأولى هي: [فحص وتحليل وحدة :core فقط].
+
+المطلوب منك في هذه الجلسة (تحليل فقط بدون تعديل أي كود):
+1. قم بفحص الكود في module `:core` تحديداً (مثل Repositories, Data Fetching, Paging, and Local Caching).
+2. حدد أسباب ثقل الأداء أو استهلاك الذاكرة العالي عند الإقلاع أو جلب البيانات.
+3. قدم لي تقريراً شاملاً يحتوي على:
+   - نقاط الخلل الحالية (Problem Identification).
+   - الحل المقترح لكل نقطة (Proposed Optimization).
+   - مدى تأثير كل حل على الأداء (High / Medium / Low Impact).
+
+انتظر موافقتي على التقرير قبل البدء في تعديل أو كتابة أي كود.
+          },
+          {
+            "fieldPath": "completeWalk",
+            "columnName": "completeWalk",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCursorCreatedAt",
+            "columnName": "lastCursorCreatedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastCursorId",
+            "columnName": "lastCursorId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "cachedVideoCount",
+            "columnName": "cachedVideoCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a6b3f2918e0992ba6a3cde6ab81ba337')"
+    ]
+  }
+}

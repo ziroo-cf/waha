@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  :core is a pure logic/data library: it declares no components, permissions or
-  resources. Every manifest entry lives in the UI modules (:mobile, :tv).
+  :core is a pure logic/data library: no UI components, permissions or screens.
+  The one entry here is the cache initializer, so both host apps get a database
+  context without wiring anything themselves.
 -->
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <provider
+            android:name="com.waha.data.WahaCoreInitializer"
+            android:authorities="${applicationId}.waha-core-init"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

@@ -47,12 +47,12 @@ class TvSearchRowTest {
 
     @Before
     fun clearSearches() {
-        RecentSearchesStore.recentQueries.clear()
+        RecentSearchesStore.clear()
     }
 
     @After
     fun clearSearchesAgain() {
-        RecentSearchesStore.recentQueries.clear()
+        RecentSearchesStore.clear()
     }
 
     private fun showSearch() {

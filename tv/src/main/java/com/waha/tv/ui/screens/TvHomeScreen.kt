@@ -100,12 +100,7 @@ private fun TvHomeRails(
     // "أكمل المشاهدة": the videos the viewer paused part-way, newest first.
     // The filter itself lives in :core so phone and TV agree on what counts as
     // "unfinished"; here it is just joined back to the library's metadata.
-    val continueWatchingEntries = remember(
-        WatchHistoryStore.recentIds.size,
-        WatchHistoryStore.watchedAtMs.value,
-        WatchHistoryStore.lastPositionMs.value,
-        WatchHistoryStore.durationMs.value
-    ) {
+    val continueWatchingEntries = remember(WatchHistoryStore.snapshot) {
         WatchHistoryStore.continueWatching()
     }
     val progressById = remember(continueWatchingEntries) {

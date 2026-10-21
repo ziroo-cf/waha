@@ -1,13 +1,23 @@
 package com.waha.data
 
+import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** One progressive/adaptive stream entry returned by a Piped API instance. */
 @Serializable
@@ -43,8 +53,15 @@ sealed interface PipedPlaybackSource {
 
 /**
  * Resolves YouTube video ids into playable stream URLs through public Piped API
- * instances. Instances are tried in order, and the public instance list is used
- * as a fallback when all known ones fail.
+ * instances.
+ *
+ * Every instance is tried **in parallel** with a short per-instance timeout, and
+ * the first usable answer wins. Instances used to be tried one after another,
+ * each with an eight-second budget, so a bad day for the public instances could
+ * cost thirty seconds before the player even started. The public directory is
+ * refreshed in the background once every few hours — it used to be fetched on
+ * every resolve, *before* the known instances were even tried, adding a full
+ * round trip to the common case.
  */
 object PipedApi {
 
@@ -58,6 +75,17 @@ object PipedApi {
 
     private const val INSTANCES_LIST_URL = "https://piped-instances.kavin.rocks/"
 
+    private const val TAG = "PipedApi"
+
+    /** Per-instance budget: an instance that cannot answer in this window is useless to the player. */
+    private const val INSTANCE_TIMEOUT_MS = 4_000L
+
+    /** How long the discovered instance list stays fresh. */
+    private const val INSTANCE_LIST_TTL_MS = 6L * 60L * 60L * 1_000L
+
+    /** Retry the directory sooner when it failed, so a restart does not pin a bad list for hours. */
+    private const val INSTANCE_LIST_RETRY_MS = 15L * 60L * 1_000L
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -66,46 +94,130 @@ object PipedApi {
     private val httpClient by lazy {
         HttpClient(Android) {
             install(HttpTimeout) {
-                connectTimeoutMillis = 5_000
-                requestTimeoutMillis = 8_000
-                socketTimeoutMillis = 8_000
+                connectTimeoutMillis = INSTANCE_TIMEOUT_MS
+                requestTimeoutMillis = INSTANCE_TIMEOUT_MS
+                socketTimeoutMillis = INSTANCE_TIMEOUT_MS
             }
         }
     }
+
+    private val discoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val discoveryInFlight = AtomicBoolean(false)
+
+    @Volatile
+    private var discovered: List<String> = emptyList()
+
+    @Volatile
+    private var discoveredAtMs: Long = 0L
 
     @Serializable
     private data class PipedInstance(val api_url: String)
 
     /** Resolves a YouTube video id into a playable source, or null when unavailable. */
     suspend fun resolvePlaybackSource(videoId: String): PipedPlaybackSource? {
+        refreshInstancesIfStale()
         val streams = fetchStreams(videoId) ?: return null
         return pickPlaybackSource(streams)
     }
 
-    private suspend fun fetchStreams(videoId: String): PipedStreams? {
-        val bases = instanceBaseUrls + discoverInstances()
-        for (base in bases) {
-            val url = "${base.trimEnd('/')}/streams/$videoId"
-            try {
-                val response = httpClient.get(url)
-                if (!response.status.isSuccess()) continue
-                val streams = json.decodeFromString<PipedStreams>(response.bodyAsText())
-                val hasStreams = streams.videoStreams.isNotEmpty() || streams.audioStreams.isNotEmpty()
-                if (streams.error.isNullOrBlank() && hasStreams) return streams
-            } catch (_: Exception) {
-                // Instance unavailable or returned unexpected data: try the next one.
+    /**
+     * Races every instance and returns the first usable payload.
+     *
+     * The remaining requests are cancelled as soon as one wins, so a resolve
+     * costs one round trip, not one per instance.
+     */
+    private suspend fun fetchStreams(videoId: String): PipedStreams? = coroutineScope {
+        val instances = PipedInstances.order(
+            known = instanceBaseUrls,
+            discovered = discovered,
+            health = PipedInstanceHealth::peek
+        )
+        if (instances.isEmpty()) return@coroutineScope null
+
+        val results = Channel<Pair<String, PipedStreams?>>(Channel.UNLIMITED)
+        val jobs = instances.map { base ->
+            launch {
+                val startedAt = System.nanoTime()
+                val streams = attempt(base, videoId)
+                val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+                val health = PipedInstanceHealth.of(base)
+                if (streams != null) health.recordSuccess(elapsedMs) else health.recordFailure()
+                results.send(base to streams)
             }
         }
-        return null
+
+        var remaining = jobs.size
+        var winner: PipedStreams? = null
+        var winnerBase: String? = null
+        while (remaining > 0 && winner == null) {
+            val (base, streams) = results.receive()
+            remaining--
+            if (streams != null) {
+                winner = streams
+                winnerBase = base
+            }
+        }
+        Log.d(TAG, "$videoId answered by ${winnerBase ?: "no instance"} (${jobs.size} tried)")
+
+        jobs.forEach { it.cancel() }
+        winner
+    }
+
+    /** One `GET /streams/{id}` against one instance; null for any failure. */
+    private suspend fun attempt(base: String, videoId: String): PipedStreams? = try {
+        val response = httpClient.get("$base/streams/$videoId")
+        if (!response.status.isSuccess()) {
+            null
+        } else {
+            val streams = json.decodeFromString<PipedStreams>(response.bodyAsText())
+            val hasStreams = streams.videoStreams.isNotEmpty() || streams.audioStreams.isNotEmpty()
+            if (streams.error.isNullOrBlank() && hasStreams) streams else null
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Instance unavailable or returned unexpected data: another one may still answer.
+        Log.d(TAG, "$base failed: ${e.javaClass.simpleName}: ${e.message}")
+        null
+    }
+
+    /**
+     * Refreshes the public directory in the background; the current list is used
+     * meanwhile, so a resolve never waits for discovery.
+     */
+    private fun refreshInstancesIfStale() {
+        val now = System.currentTimeMillis()
+        if (now - discoveredAtMs < INSTANCE_LIST_TTL_MS) return
+        if (!discoveryInFlight.compareAndSet(false, true)) return
+        discoveryScope.launch {
+            try {
+                val found = discoverInstances()
+                discovered = if (found.isNotEmpty()) found else discovered
+                discoveredAtMs = if (found.isNotEmpty()) {
+                    System.currentTimeMillis()
+                } else {
+                    // Keep the old list and retry sooner than a full TTL.
+                    System.currentTimeMillis() - INSTANCE_LIST_TTL_MS + INSTANCE_LIST_RETRY_MS
+                }
+            } finally {
+                discoveryInFlight.set(false)
+            }
+        }
     }
 
     private suspend fun discoverInstances(): List<String> = try {
-        val response = httpClient.get(INSTANCES_LIST_URL)
-        if (response.status.isSuccess()) {
-            json.decodeFromString<List<PipedInstance>>(response.bodyAsText()).map { it.api_url }
-        } else {
-            emptyList()
-        }
+        withTimeoutOrNull(INSTANCE_TIMEOUT_MS * 2) {
+            val response = httpClient.get(INSTANCES_LIST_URL)
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<PipedInstance>>(response.bodyAsText())
+                    .map { it.api_url }
+                    .let(PipedInstances::distinct)
+            } else {
+                emptyList()
+            }
+        } ?: emptyList()
+    } catch (e: CancellationException) {
+        throw e
     } catch (_: Exception) {
         emptyList()
     }

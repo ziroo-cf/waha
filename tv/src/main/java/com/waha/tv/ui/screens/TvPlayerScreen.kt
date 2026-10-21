@@ -34,10 +34,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -81,7 +83,9 @@ import com.waha.domain.toMediaSource
 import com.waha.tv.TvCardMeta
 import com.waha.tv.TvTestTags
 import com.waha.tv.ui.theme.WahaTvColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /** How the TV player is doing: resolving the stream, playing it, or stuck. */
 private sealed interface TvPlaybackState {
@@ -197,13 +201,21 @@ fun TvPlayerScreen(
     var overlayVisible by remember { mutableStateOf(true) }
     var panelVisible by remember { mutableStateOf(false) }
 
-    val suggestions = remember(video.id, allVideos) {
-        VideoSuggestionsEngine.build(
-            current = video,
-            allVideos = allVideos,
-            watchedIds = WatchHistoryStore.recentIds.toSet(),
-            count = PLAYER_SUGGESTION_COUNT
-        )
+    // The history is one immutable snapshot now: its watched set only changes when
+    // the set of watched videos does, not when a position is saved, so opening the
+    // player or pausing it no longer re-ranks the whole library.
+    // derivedStateOf so a saved playback position (which only moves the position
+    // maps) does not invalidate this whole player: only a changed watched set does.
+    val watchedIds by remember { derivedStateOf { WatchHistoryStore.watchedIds } }
+    val suggestions by produceState(emptyList(), video.id, allVideos, watchedIds) {
+        value = withContext(Dispatchers.Default) {
+            VideoSuggestionsEngine.build(
+                current = video,
+                allVideos = allVideos,
+                watchedIds = watchedIds,
+                count = PLAYER_SUGGESTION_COUNT
+            )
+        }
     }
 
     DisposableEffect(player) {
@@ -921,7 +933,7 @@ private fun PanelPill(
 @Composable
 private fun SavePill(videoId: String) {
     // Reading the snapshot list subscribes the pill to saves made anywhere else.
-    val isSaved = SavedVideosStore.savedIds.contains(videoId)
+    val isSaved = SavedVideosStore.isSaved(videoId)
 
     PanelPill(
         label = if (isSaved) "محفوظ" else "حفظ",

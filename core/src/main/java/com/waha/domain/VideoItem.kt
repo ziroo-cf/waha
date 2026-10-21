@@ -1,8 +1,10 @@
 package com.waha.domain
 
+import com.waha.data.VideoEntity
 import com.waha.data.VideoRow
 import com.waha.data.toVideoDurationText
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * A video as the UI layers consume it: presentation-ready fields plus the
@@ -29,6 +31,24 @@ data class VideoItem(
 fun VideoItem.displayThumbnailUrl(): String =
     thumbnailUrl?.takeIf { it.isNotBlank() }
         ?: "https://img.youtube.com/vi/$youtubeId/hqdefault.jpg"
+
+/**
+ * Maps a cached row onto the shared UI model.
+ *
+ * The duration badge text is read from the row, not rebuilt: it is formatted
+ * once when the library is written to the cache, so reading the library is a
+ * plain field copy for every card.
+ */
+fun VideoEntity.toVideoItem(): VideoItem = VideoItem(
+    id = id,
+    youtubeId = id,
+    title = title,
+    meta = category.orEmpty(),
+    thumbnailUrl = thumbnail,
+    categoryKey = category,
+    durationText = durationText
+        ?: durationSeconds.takeIf { it > 0L }?.seconds?.toVideoDurationText()
+)
 
 /** Maps a Supabase row onto the shared UI model; every app module reuses this. */
 fun VideoRow.toVideoItem(): VideoItem = VideoItem(
