@@ -17,7 +17,7 @@ android {
         targetSdk = 37
         versionCode = 1
         // The TV build keeps its own version string; the phone build ships as "0.3b".
-        versionName = "0.3.1"
+        versionName = "0.4.0"
 
         // The D-pad/focus tests under src/androidTest run on a device or TV
         // emulator (landscape, 16:9 — see the android-tv-testing skill).
