@@ -20,19 +20,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.NativeKeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
@@ -48,7 +52,7 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardColors
 import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.Glow
+import androidx.tv.material3.CardShape
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -95,13 +99,24 @@ internal fun Modifier.tvClickOnEnterKey(onClick: () -> Unit): Modifier =
  * and chips' pills without any of them restating its own corners.
  */
 @Composable
-internal fun tvFocusBorder(): Border =
-    Border(border = BorderStroke(WahaTvDimens.FocusBorderWidth, WahaTvColors.Accent))
+internal fun tvFocusBorder(): Border {
+    val accent = WahaTvColors.Accent
+    // Remembered, not rebuilt: a card or key that recomposes for any other reason must
+    // not allocate a fresh Border + BorderStroke each time.
+    return remember(accent) {
+        Border(border = BorderStroke(WahaTvDimens.FocusBorderWidth, accent))
+    }
+}
 
-/** The brand's focus glow: a soft accent halo around the focused element. */
-@Composable
-internal fun tvFocusGlow(): Glow =
-    Glow(elevationColor = WahaTvColors.Accent.copy(alpha = 0.55f), elevation = WahaTvDimens.FocusGlowRadius)
+/*
+ * Focus has no glow.
+ *
+ * tv-material's Glow is not a flat halo: it draws the node's outline with
+ * Paint.setShadowLayer, i.e. a blurred shadow the size of the whole card, on every
+ * focus move. On the Mali/Amlogic class of GPU this TV build targets that is the most
+ * expensive thing in the frame — and it happens exactly when the viewer is moving the
+ * remote. Focus is therefore a 4dp accent border only, which costs one draw call.
+ */
 
 /** The brand's focus scale: none — focus is drawn, never animated into size. */
 internal fun tvFocusScale(): Float = WahaTvDimens.FocusScale
@@ -114,19 +129,49 @@ internal fun tvFocusScale(): Float = WahaTvDimens.FocusScale
  * The content colour comes from [tvItemContentColor] rather than from the component's own
  * resolution, so the label is dark-on-accent in the same frame the fill turns accent: focus
  * here never waits on anything, which is the rule the whole TV build follows.
+ *
+ * `CardDefaults.colors` is a read-only composable in tv-material, so it is called directly
+ * rather than cached: it allocates one small immutable value and creates no recomposition
+ * scope, and the value it returns is compared by value on the way into `Card`.
  */
 @Composable
-internal fun tvItemColors(selected: Boolean, isFocused: Boolean): CardColors =
-    CardDefaults.colors(
+internal fun tvItemColors(selected: Boolean, isFocused: Boolean): CardColors {
+    val accent = WahaTvColors.Accent
+
+    return CardDefaults.colors(
         containerColor = when {
-            isFocused -> WahaTvColors.Accent
-            selected -> WahaTvColors.Accent.copy(alpha = 0.22f)
+            isFocused -> accent
+            selected -> accent.copy(alpha = 0.22f)
             else -> WahaTvColors.Surface
         },
         contentColor = tvItemContentColor(selected, isFocused),
-        focusedContainerColor = WahaTvColors.Accent,
+        focusedContainerColor = accent,
         focusedContentColor = WahaTvColors.OnAccent
     )
+}
+
+/**
+ * The video card's colours: the shelf's surface at rest, the raised variant while the
+ * remote is on the card.
+ */
+@Composable
+internal fun tvCardColors(): CardColors = CardDefaults.colors(
+    containerColor = Color.Transparent,
+    contentColor = WahaTvColors.TextWarm,
+    focusedContentColor = WahaTvColors.TextWarm
+)
+
+/**
+ * A video card's shape: **rectangular**.
+ *
+ * A rounded shape clips the whole card — text block included — and a non-rectangular
+ * clip costs a separate RenderNode for every card, which is what stops the rows from
+ * batching into one draw. The artwork alone keeps its rounded corners (see
+ * [TvVideoCard]), so the shelf still looks like Waha while each card draws as one
+ * rectangle.
+ */
+@Composable
+internal fun tvCardShape(): CardShape = remember { CardDefaults.shape(shape = RoundedCornerShape(12.dp)) }
 
 /** The label/icon colour that pairs with [tvItemColors]. */
 @Composable
@@ -142,8 +187,8 @@ internal fun tvItemContentColor(selected: Boolean, isFocused: Boolean): Color = 
  * viewer browsing from the sofa always knows what a row holds without pressing
  * anything.
  *
- * Focus is a coloured border (plus a soft accent glow and a play glyph); the card
- * itself never grows, so moving the remote cannot shift the shelf around.
+ * Focus is a coloured border and a play glyph; the card itself never grows, so
+ * moving the remote cannot shift the shelf around.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -156,31 +201,46 @@ fun TvVideoCard(
     /** Optional muted line under the title (the history grid's "watched x ago"). */
     footnote: String? = null,
     /** 0f..1f watched so far; draws a thin progress bar over the artwork. */
-    progressFraction: Float? = null
+    progressFraction: Float? = null,
+    /**
+     * Whether the viewer saved this video. Passed in by the row, which reads the saved
+     * set once: reading it here would subscribe every card to every save, so saving one
+     * video would recompose every card on screen.
+     */
+    isSaved: Boolean = false
 ) {
-    val isSaved = SavedVideosStore.isSaved(video.id)
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+
+    // Where this card is, so the shell can put the remote back on it after the player
+    // closes. Registered on arrival, never on depart: the card the viewer left from is
+    // the one still focused when the player opens.
+    val focusMemory = LocalTvCardFocusMemory.current
+    val cardFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(isFocused) {
+        if (isFocused) focusMemory?.register(cardFocusRequester)
+    }
 
     Card(
         onClick = onClick,
         modifier = modifier
             .then(if (width != null) Modifier.width(width) else Modifier)
+            .focusRequester(cardFocusRequester)
             .testTag(TvTestTags.card(video.id)),
         interactionSource = interactionSource,
-        shape = CardDefaults.shape(RoundedCornerShape(WahaTvDimens.CornerRadius)),
-        colors = CardDefaults.colors(
-            containerColor = WahaTvColors.Surface,
-            focusedContainerColor = WahaTvColors.SurfaceVariant
-        ),
+        // Rectangular, so the card is one draw; the artwork clips itself below.
+        shape = tvCardShape(),
+        colors = tvCardColors(),
         scale = CardDefaults.scale(focusedScale = tvFocusScale()),
-        border = CardDefaults.border(focusedBorder = tvFocusBorder()),
-        glow = CardDefaults.glow(focusedGlow = tvFocusGlow())
+        border = CardDefaults.border(focusedBorder = tvFocusBorder())
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(WahaTvDimens.CardAspectRatio)
+                // The one rounded clip on the card, and it is on the artwork only: the
+                // text block underneath is a plain rectangle and needs no clip.
+                .clip(RoundedCornerShape(WahaTvDimens.CornerRadius))
                 .testTag(TvTestTags.artwork(video.id))
         ) {
             AsyncImage(
@@ -192,27 +252,31 @@ fun TvVideoCard(
                     .background(WahaTvColors.CardPlaceholder)
             )
 
+            // The focus affordance: one node, painted in the draw phase — a scrim over
+            // the artwork and a play triangle in the brand accent. It used to be three
+            // composables (scrim, circle, icon) that appeared and vanished on every
+            // focus move; this adds no layout node and no composition of its own.
             if (isFocused) {
+                val scrim = WahaTvColors.MediaScrimSoft
+                val ink = WahaTvColors.Accent
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(WahaTvColors.MediaScrimSoft),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .background(WahaTvColors.Accent, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "تشغيل",
-                            tint = WahaTvColors.OnAccent,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
+                        .matchParentSize()
+                        .drawBehind {
+                            drawRect(color = scrim)
+
+                            val reach = size.minDimension * 0.09f
+                            val centreX = size.width / 2f
+                            val centreY = size.height / 2f
+                            val triangle = Path().apply {
+                                moveTo(centreX - reach * 0.55f, centreY - reach)
+                                lineTo(centreX + reach * 0.95f, centreY)
+                                lineTo(centreX - reach * 0.55f, centreY + reach)
+                                close()
+                            }
+                            drawPath(path = triangle, color = ink)
+                        }
+                )
             }
 
             // The running time rides on the artwork itself — a dark pill in the card's
@@ -248,7 +312,7 @@ fun TvVideoCard(
                         .padding(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Bookmark,
+                        imageVector = TvIcons.Bookmark,
                         contentDescription = "محفوظ",
                         tint = WahaTvColors.OnMedia,
                         modifier = Modifier.size(18.dp)
@@ -380,7 +444,9 @@ fun TvVideoRail(
      */
     emptyMessage: String? = null,
     /** Optional action beside the title (the library's "مسح الكل" on السجل). */
-    action: (@Composable () -> Unit)? = null
+    action: (@Composable () -> Unit)? = null,
+    /** Attached to the row's first card, so a caller can place the remote there. */
+    firstCardRequester: FocusRequester? = null
 ) {
     if (videos.isEmpty() && emptyMessage == null) return
 
@@ -406,7 +472,8 @@ fun TvVideoRail(
                 videos = videos,
                 onVideoClick = onVideoClick,
                 footnote = footnote,
-                progress = progress
+                progress = progress,
+                firstCardRequester = firstCardRequester
             )
         }
     }
@@ -424,19 +491,31 @@ fun TvVideoRow(
     onVideoClick: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
     footnote: (VideoItem) -> String? = { null },
-    progress: (VideoItem) -> Float? = { null }
+    progress: (VideoItem) -> Float? = { null },
+    /** Attached to the row's first card, so a caller can place the remote there. */
+    firstCardRequester: FocusRequester? = null
 ) {
+    // One subscription for the whole row; each card gets a plain boolean instead of
+    // subscribing to the saved set itself.
+    val savedIds = SavedVideosStore.savedIds
+
     LazyRow(
         contentPadding = PaddingValues(horizontal = WahaTvDimens.ScreenPadding),
         horizontalArrangement = Arrangement.spacedBy(WahaTvDimens.CardSpacing),
         modifier = modifier.fillMaxWidth()
     ) {
-        items(videos, key = { it.id }) { video ->
+        itemsIndexed(videos, key = { _, video -> video.id }) { index, video ->
             TvVideoCard(
                 video = video,
                 onClick = { onVideoClick(video) },
+                modifier = if (index == 0 && firstCardRequester != null) {
+                    Modifier.focusRequester(firstCardRequester)
+                } else {
+                    Modifier
+                },
                 footnote = footnote(video),
-                progressFraction = progress(video)
+                progressFraction = progress(video),
+                isSaved = video.id in savedIds
             )
         }
     }

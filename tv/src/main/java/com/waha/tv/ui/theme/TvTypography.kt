@@ -28,86 +28,44 @@ object WahaTvFonts {
 }
 
 /**
+ * The ramp's scale, in step with [com.waha.tv.ui.screens.WahaTvDimens]: the numbers
+ * below are the sizes the screens were first built with, and the ramp multiplies
+ * them once here rather than at every call site.
+ */
+private const val TypeScale = 1.5f
+
+private fun tvStyle(
+    fontFamily: FontFamily,
+    weight: FontWeight,
+    size: Float,
+    line: Float
+): TextStyle = TextStyle(
+    fontFamily = fontFamily,
+    fontWeight = weight,
+    fontSize = (size * TypeScale).sp,
+    lineHeight = (line * TypeScale).sp
+)
+
+/**
  * The phone ramp (headline 28sp / body 16sp) re-scaled for a 10-foot UI: the
- * same hierarchy, roughly 1.5x the size so titles read from across the room.
+ * same hierarchy, large enough to read from across the room.
+ *
+ * The player does not read this ramp for its overlays: it keeps the sizes it was
+ * designed with (see `playerSized` in `TvPlayerScreen`), so growing the browse UI
+ * leaves the video's own chrome exactly as it was.
  */
 val WahaTvTypography = Typography(
-    displayLarge = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Black,
-        fontSize = 48.sp,
-        lineHeight = 56.sp
-    ),
-    headlineLarge = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Black,
-        fontSize = 36.sp,
-        lineHeight = 44.sp
-    ),
-    headlineMedium = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Bold,
-        fontSize = 30.sp,
-        lineHeight = 38.sp
-    ),
-    headlineSmall = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Bold,
-        fontSize = 26.sp,
-        lineHeight = 34.sp
-    ),
-    titleLarge = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Bold,
-        fontSize = 23.sp,
-        lineHeight = 30.sp
-    ),
-    titleMedium = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Bold,
-        fontSize = 20.sp,
-        lineHeight = 27.sp
-    ),
-    titleSmall = TextStyle(
-        fontFamily = WahaTvFonts.Tajawal,
-        fontWeight = FontWeight.Medium,
-        fontSize = 18.sp,
-        lineHeight = 24.sp
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = WahaTvFonts.PlexArabic,
-        fontWeight = FontWeight.Normal,
-        fontSize = 20.sp,
-        lineHeight = 28.sp
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = WahaTvFonts.PlexArabic,
-        fontWeight = FontWeight.Normal,
-        fontSize = 18.sp,
-        lineHeight = 26.sp
-    ),
-    bodySmall = TextStyle(
-        fontFamily = WahaTvFonts.PlexArabic,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 22.sp
-    ),
-    labelLarge = TextStyle(
-        fontFamily = WahaTvFonts.PlexArabic,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp
-    ),
-    labelMedium = TextStyle(
-        fontFamily = WahaTvFonts.PlexArabic,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 21.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = WahaTvFonts.PlexArabic,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
-        lineHeight = 19.sp
-    )
+    displayLarge = tvStyle(WahaTvFonts.Tajawal, FontWeight.Black, 48f, 56f),
+    headlineLarge = tvStyle(WahaTvFonts.Tajawal, FontWeight.Black, 36f, 44f),
+    headlineMedium = tvStyle(WahaTvFonts.Tajawal, FontWeight.Bold, 30f, 38f),
+    headlineSmall = tvStyle(WahaTvFonts.Tajawal, FontWeight.Bold, 26f, 34f),
+    titleLarge = tvStyle(WahaTvFonts.Tajawal, FontWeight.Bold, 23f, 30f),
+    titleMedium = tvStyle(WahaTvFonts.Tajawal, FontWeight.Bold, 20f, 27f),
+    titleSmall = tvStyle(WahaTvFonts.Tajawal, FontWeight.Medium, 18f, 24f),
+    bodyLarge = tvStyle(WahaTvFonts.PlexArabic, FontWeight.Normal, 20f, 28f),
+    bodyMedium = tvStyle(WahaTvFonts.PlexArabic, FontWeight.Normal, 18f, 26f),
+    bodySmall = tvStyle(WahaTvFonts.PlexArabic, FontWeight.Normal, 16f, 22f),
+    labelLarge = tvStyle(WahaTvFonts.PlexArabic, FontWeight.SemiBold, 18f, 24f),
+    labelMedium = tvStyle(WahaTvFonts.PlexArabic, FontWeight.SemiBold, 16f, 21f),
+    labelSmall = tvStyle(WahaTvFonts.PlexArabic, FontWeight.SemiBold, 14f, 19f)
 )

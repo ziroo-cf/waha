@@ -3,6 +3,7 @@ package com.waha.tv
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
@@ -68,6 +69,13 @@ class TvSearchRowTest {
         rule.onAllNodesWithText(letter).onFirst().requestFocus()
         rule.pressDPadKey(Key.DirectionCenter)
         rule.waitForIdle()
+
+        // Filtering is debounced and runs on a worker thread, so the row arrives a moment
+        // after the key press rather than in the same frame — the same way it does for a
+        // viewer holding the remote.
+        rule.waitUntil(timeoutMillis = 2_000) {
+            rule.onAllNodesWithTag(TvTestTags.SearchResults).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     private fun bounds(tag: String) = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot

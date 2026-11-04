@@ -1,5 +1,6 @@
 package com.waha.tv.ui.screens
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -17,19 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -46,8 +37,14 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,14 +54,17 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick as semanticsOnClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -87,6 +87,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+private const val TAG = "TvPlayer"
+
 /** How the TV player is doing: resolving the stream, playing it, or stuck. */
 private sealed interface TvPlaybackState {
     data object Loading : TvPlaybackState
@@ -100,15 +102,17 @@ private const val SEEK_STEP_MS = 10_000L
 /** How long the top overlay stays up before hiding itself. */
 private const val OVERLAY_TIMEOUT_MS = 4_000L
 
-/** How long a seek hint stays in the middle of the video, icon first. */
+/** How long a seek hint stays at the side of the video. */
 private const val FEEDBACK_TIMEOUT_MS = 700L
 
 /**
- * What the middle of the screen is telling the viewer, if anything.
+ * What a press is telling the viewer, if anything.
  *
  * The remote has no pointer, so every press that changes playback says so with an
- * icon in the one place the eye already rests — no text, nothing to read across the
- * room.
+ * icon — no text, nothing to read across the room. Play and pause belong in the
+ * middle, where the eye already rests; the two seek hints belong at the sides they
+ * seek towards, so a rewind is never mistaken for the pause glyph it used to sit on
+ * top of.
  */
 internal enum class TvPlayerFeedback(val description: String) {
     Play("تشغيل"),
@@ -118,34 +122,20 @@ internal enum class TvPlayerFeedback(val description: String) {
 
     val icon: ImageVector
         get() = when (this) {
-            Play -> Icons.Filled.PlayArrow
-            Pause -> Icons.Filled.Pause
-            Rewind -> Icons.Filled.Replay10
-            Forward -> Icons.Filled.Forward10
+            Play -> TvIcons.PlayArrow
+            Pause -> TvIcons.Pause
+            Rewind -> TvIcons.Replay10
+            Forward -> TvIcons.Forward10
         }
 }
 
 /**
- * A quality choice. [maxHeight] caps the resolved stream; null means "whatever
- * the extractor finds best", which is what the phone build plays.
+ * The player's chrome keeps the type sizes it was designed with, while the browse
+ * UI grew by half: the video's overlays sit over the picture and are already read
+ * from the same sofa, so scaling them would only cover more of the film.
  */
-data class TvQualityOption(val label: String, val maxHeight: Int?)
-
-/** The choices the player panel offers, best first. */
-internal val TV_QUALITY_OPTIONS = listOf(
-    TvQualityOption("تلقائي", null),
-    TvQualityOption("1080p", 1080),
-    TvQualityOption("720p", 720),
-    TvQualityOption("360p", 360)
-)
-
-/**
- * The option matching a persisted quality height (null = auto). An unknown
- * height (an older build's choice, or an edited preferences file) falls back to
- * auto rather than leaving the panel with nothing selected.
- */
-internal fun qualityOptionFor(height: Int?): TvQualityOption =
-    TV_QUALITY_OPTIONS.firstOrNull { it.maxHeight == height } ?: TV_QUALITY_OPTIONS.first()
+private fun TextStyle.playerSized(size: Float, line: Float): TextStyle =
+    copy(fontSize = size.sp, lineHeight = line.sp)
 
 /** How many "شاهد المزيد" cards the player panel shows. */
 private const val PLAYER_SUGGESTION_COUNT = 12
@@ -153,10 +143,9 @@ private const val PLAYER_SUGGESTION_COUNT = 12
 /**
  * TV player: no touch controls at all.
  *
- * - centre / OK  → play or pause, and the middle of the screen answers with the
- *                  same glyph (a 10-second arrow while seeking)
- * - left / right → seek 10 seconds
- * - down         → open the control panel (transport, quality, save + "شاهد المزيد")
+ * - centre / OK  → play or pause
+ * - left / right → seek 10 seconds, answered by an arrow at that side
+ * - down         → open the control panel (transport, save + "شاهد المزيد")
  * - up           → close the panel, or bring the overlay back
  * - back         → close the panel, or leave the player
  *
@@ -166,40 +155,42 @@ private const val PLAYER_SUGGESTION_COUNT = 12
  *
  * Stream resolution, the player itself and the suggestion ranking all come from
  * :core, exactly like the phone build, so the two stay in sync when extraction
- * or ranking changes.
+ * or ranking changes. The stream is always the extractor's default pick: the TV
+ * build offers no quality menu.
  */
 @Composable
 fun TvPlayerScreen(
     video: VideoItem,
     allVideos: List<VideoItem>,
-    quality: TvQualityOption,
-    onQualityChange: (TvQualityOption) -> Unit,
     onVideoSelect: (VideoItem) -> Unit,
     onBack: () -> Unit,
     /** Where playback should start — the Continue Watching rail passes the saved position. */
     startPositionMs: Long = 0L
 ) {
     val context = LocalContext.current
-    val player = remember(context) { WahaPlayer.create(context) }
+    // The TV player gets the lean buffer profile: a 1GB box cannot hold the phone's
+    // 50-second buffer alongside a merged video+audio stream.
+    val player = remember(context) { WahaPlayer.createForTv(context) }
     val rootFocusRequester = remember { FocusRequester() }
     val panelFocusRequester = remember { FocusRequester() }
 
     var playback by remember(video.id) { mutableStateOf<TvPlaybackState>(TvPlaybackState.Loading) }
     var isPlaying by remember { mutableStateOf(false) }
+    // True while ExoPlayer is refilling its buffer — after a seek, or when the network
+    // dips. Nothing else tells the viewer why the picture stopped.
+    var isBuffering by remember { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
-    // The transient icon in the middle (a seek hint), and a tick so pressing the
-    // same direction twice restarts its timer.
+    // The transient icon at the side (a seek hint), and a tick so pressing the same
+    // direction twice restarts its timer.
     var feedback by remember { mutableStateOf<TvPlayerFeedback?>(null) }
     var feedbackTicks by remember { mutableIntStateOf(0) }
     // Bumped by every press that reveals the overlay, so the hide timer restarts
     // even when the overlay was already up.
     var overlayTicks by remember { mutableIntStateOf(0) }
-    // Only the first resolve uses [startPositionMs]: after that, switching
-    // quality must resume from wherever the viewer actually is.
-    var pendingResumeMs by remember(video.id) { mutableLongStateOf(startPositionMs.coerceAtLeast(0L)) }
     var overlayVisible by remember { mutableStateOf(true) }
     var panelVisible by remember { mutableStateOf(false) }
+    var pendingResumeMs by remember(video.id) { mutableLongStateOf(startPositionMs.coerceAtLeast(0L)) }
 
     // The history is one immutable snapshot now: its watched set only changes when
     // the set of watched videos does, not when a position is saved, so opening the
@@ -224,6 +215,10 @@ fun TvPlayerScreen(
                 isPlaying = playing
             }
 
+            override fun onPlaybackStateChanged(state: Int) {
+                isBuffering = state == Player.STATE_BUFFERING
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 playback = TvPlaybackState.Error
             }
@@ -237,14 +232,14 @@ fun TvPlayerScreen(
         }
     }
 
-    // Resolving runs again whenever the video or the chosen quality changes, and
-    // resumes from where the viewer was so a quality switch does not restart.
-    LaunchedEffect(video.id, quality) {
+    // Resolving runs whenever the video changes, and resumes from where the viewer
+    // was so jumping to a suggestion does not restart from the beginning.
+    LaunchedEffect(video.id) {
         val resumeFrom = pendingResumeMs.takeIf { it > 0L }
             ?: player.currentPosition.coerceAtLeast(0L)
         pendingResumeMs = 0L
         playback = TvPlaybackState.Loading
-        val source = PlaybackResolver.resolve(video, maxHeight = quality.maxHeight)
+        val source = PlaybackResolver.resolve(video)
         if (source == null) {
             playback = TvPlaybackState.Error
         } else {
@@ -288,18 +283,19 @@ fun TvPlayerScreen(
     }
 
     // The panel takes focus so the remote drives its chips and cards; closing it
-    // hands the D-pad back to the video. A requester whose node is not attached
-    // yet throws instead of focusing, and losing the focus move is recoverable
-    // (the D-pad simply starts from the default target), so it must not crash.
+    // hands the D-pad back to the video.
+    //
+    // A requester whose node is not attached yet throws instead of focusing, and the
+    // request can also be dropped while the panel is still being placed — which is why
+    // this retries for a few frames instead of trying once and swallowing the failure.
+    // The fallback matters more than the retry: while the panel is up the video's own
+    // D-pad handler is disabled, so a panel that could not take focus would leave every
+    // key dead except back. If focus cannot be placed, the panel closes again.
     LaunchedEffect(panelVisible) {
-        // The requester only becomes usable once its node has been placed, which is a
-        // frame after the panel is first composed. Requesting in the effect itself is
-        // early enough to be dropped, leaving the first D-pad press dead; one frame
-        // of patience lands the focus before the viewer can press anything.
-        withFrameNanos { }
-        runCatching {
-            if (panelVisible) panelFocusRequester.requestFocus()
-            else rootFocusRequester.requestFocus()
+        val target = if (panelVisible) panelFocusRequester else rootFocusRequester
+        if (!target.requestFocusWithRetry()) {
+            Log.w(TAG, "focus unavailable for ${if (panelVisible) "the control panel" else "the player"}")
+            if (panelVisible) panelVisible = false
         }
     }
 
@@ -309,14 +305,12 @@ fun TvPlayerScreen(
         overlayTicks++
     }
 
-    LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
+    LaunchedEffect(Unit) { rootFocusRequester.requestFocusWithRetry() }
 
     BackHandler(enabled = panelVisible) { panelVisible = false }
 
     fun togglePlayback() {
         showOverlay()
-        // The middle of the screen shows the state the viewer is now in: the pause
-        // glyph while it plays, the play glyph while it is held.
         feedback = null
         feedbackTicks++
         if (isPlaying) {
@@ -413,30 +407,35 @@ fun TvPlayerScreen(
                 }
             }
     ) {
-        if (playback == TvPlaybackState.Playing) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        // The screen draws its own remote-friendly overlays.
-                        useController = false
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                        setShutterBackgroundColor(android.graphics.Color.BLACK)
-                    }
-                },
-                update = { view ->
-                    view.player = player
-                    view.keepScreenOn = true
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            )
-        }
+        // The video surface is mounted once and never torn down. Unmounting PlayerView
+        // would destroy and recreate the SurfaceView — a black flash plus a fresh
+        // MediaCodec/surface setup — on the device that can least afford it. Loading,
+        // buffering and error states are drawn over the surface instead.
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    // The screen draws its own remote-friendly overlays.
+                    useController = false
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                }
+            },
+            update = { view ->
+                view.player = player
+                view.keepScreenOn = true
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        )
 
         when (playback) {
             TvPlaybackState.Loading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = WahaTvColors.Accent)
+                    CircularProgressIndicator(
+                        color = WahaTvColors.Accent,
+                        modifier = Modifier.testTag(TvTestTags.PlayerBuffering)
+                    )
                 }
             }
 
@@ -447,17 +446,29 @@ fun TvPlayerScreen(
                 Text(
                     text = "تعذّر تشغيل الفيديو",
                     color = WahaTvColors.TextWarm,
-                    style = MaterialTheme.typography.titleLarge
+                    style = MaterialTheme.typography.titleLarge.playerSized(23f, 30f)
                 )
                 Text(
-                    text = "اضغط رجوع للخروج، أو اختر جودة أخرى من اللوحة",
+                    text = "اضغط رجوع للخروج، أو اختر فيديو اخر",
                     color = WahaTvColors.TextMuted,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.playerSized(18f, 26f),
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
 
             TvPlaybackState.Playing -> Unit
+        }
+
+        // The circle the phone player shows while a stream fills: fast-forwarding, or a
+        // network that has not caught up, stops the picture without saying why. It takes
+        // the middle only while there is nothing else to say there.
+        if (playback == TvPlaybackState.Playing && isBuffering) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    color = WahaTvColors.Accent,
+                    modifier = Modifier.testTag(TvTestTags.PlayerBuffering)
+                )
+            }
         }
 
         if (playback == TvPlaybackState.Playing && overlayVisible) {
@@ -466,26 +477,32 @@ fun TvPlayerScreen(
             PlayerTopOverlay(
                 title = video.title,
                 category = TvCardMeta.categoryLabel(video),
-                qualityLabel = quality.label,
                 modifier = Modifier.align(Alignment.TopStart)
             )
             PlayerBottomOverlay(
-                positionMs = positionMs,
-                durationMs = durationMs,
+                positionMs = { positionMs },
+                durationMs = { durationMs },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
 
-        // The one control a viewer looks for sits dead centre: pause while the
-        // video runs, play while it is held, and a 10-second arrow for the length
-        // of a seek press. No text — a glyph reads from across the room.
-        if (playback == TvPlaybackState.Playing && !panelVisible &&
-            (overlayVisible || !isPlaying || feedback != null)
+        // The one control a viewer looks for sits dead centre: pause while the video
+        // runs, play while it is held. A seek does not replace it — the arrow belongs at
+        // the side the seek moves towards, so the two never stack on one another.
+        if (playback == TvPlaybackState.Playing && !panelVisible && !isBuffering &&
+            feedback == null && (overlayVisible || !isPlaying)
         ) {
             PlayerCenterOverlay(
                 isPlaying = isPlaying,
-                feedback = feedback,
                 modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        // A 10-second seek is answered at the edge of the frame it moves towards.
+        if (playback == TvPlaybackState.Playing && !panelVisible) {
+            PlayerSeekOverlay(
+                feedback = feedback,
+                modifier = Modifier.fillMaxSize()
             )
         }
 
@@ -493,9 +510,6 @@ fun TvPlayerScreen(
             PlayerPanel(
                 videoId = video.id,
                 isPlaying = isPlaying,
-                qualityOptions = TV_QUALITY_OPTIONS,
-                selectedQuality = quality,
-                onQualitySelect = onQualityChange,
                 onTogglePlayback = ::togglePlayback,
                 onSeekBackward = { seekBy(-SEEK_STEP_MS) },
                 onSeekForward = { seekBy(SEEK_STEP_MS) },
@@ -513,14 +527,12 @@ fun TvPlayerScreen(
 
 /**
  * The video's name at the screen's top-right — the corner Arabic reading starts
- * from — with its category directly underneath. The quality label sits in the
- * opposite corner so it never competes with the title.
+ * from — with its category directly underneath.
  */
 @Composable
 internal fun PlayerTopOverlay(
     title: String,
     category: String,
-    qualityLabel: String,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -539,57 +551,34 @@ internal fun PlayerTopOverlay(
             Text(
                 text = title,
                 color = WahaTvColors.OnMedia,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineSmall.playerSized(26f, 34f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
 
-            // The category the row was built from, right under the name.
             Text(
                 text = category,
                 color = WahaTvColors.OnMedia.copy(alpha = 0.78f),
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelLarge.playerSized(18f, 24f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 6.dp)
             )
         }
-
-        // The stream's quality sits in the far corner as a quiet pill: useful when
-        // the video looks soft, out of the way of the title. End is the left edge
-        // on this right-to-left screen.
-        Text(
-            text = qualityLabel,
-            color = WahaTvColors.OnMedia.copy(alpha = 0.85f),
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 48.dp, top = 26.dp)
-                .background(
-                    color = WahaTvColors.MediaScrimSoft,
-                    shape = RoundedCornerShape(percent = 50)
-                )
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        )
     }
 }
 
 /**
- * The icon that answers a press, in the middle of the video.
- *
- * What it shows, in order of precedence: the seek hint just pressed, otherwise the
- * playback state (pause while the video runs, play while it is held). Nothing at
- * all while the overlay is tucked away, so a paused film is not permanently
- * stamped with a glyph.
+ * The play/pause glyph in the middle of the video: pause while it runs, play while
+ * it is held. Nothing at all while the overlay is tucked away, so a paused film is
+ * not permanently stamped with a glyph.
  */
 @Composable
 internal fun PlayerCenterOverlay(
     isPlaying: Boolean,
-    feedback: TvPlayerFeedback?,
     modifier: Modifier = Modifier
 ) {
-    val shown = feedback ?: if (isPlaying) TvPlayerFeedback.Pause else TvPlayerFeedback.Play
+    val shown = if (isPlaying) TvPlayerFeedback.Pause else TvPlayerFeedback.Play
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Box(
@@ -611,21 +600,134 @@ internal fun PlayerCenterOverlay(
 }
 
 /**
- * The progress bar along the bottom edge: times at both ends and the phone's own
- * slider in between — the same Material 3 component, with the same colours, so the
- * two builds cannot drift apart. It is not focusable (a remote has nothing to
- * drag) and the value follows playback; the D-pad seeks in 10-second steps from
- * the video itself.
+ * A seek's answer, at the side of the picture the seek moves towards: rewind on the
+ * left, forward on the right — the same direction the progress bar fills.
+ *
+ * The pair is laid out under an LTR direction regardless of the screen's RTL, because
+ * "back" in a timeline is the left edge; only the two placements are forced, nothing
+ * else about the player changes.
+ */
+@Composable
+internal fun PlayerSeekOverlay(
+    feedback: TvPlayerFeedback?,
+    modifier: Modifier = Modifier
+) {
+    val shown = when (feedback) {
+        TvPlayerFeedback.Rewind -> TvPlayerFeedback.Rewind
+        TvPlayerFeedback.Forward -> TvPlayerFeedback.Forward
+        else -> return
+    }
+    val isRewind = shown == TvPlayerFeedback.Rewind
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(modifier = modifier) {
+            Box(
+                modifier = Modifier
+                    .align(if (isRewind) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(
+                        start = if (isRewind) 72.dp else 0.dp,
+                        end = if (isRewind) 0.dp else 72.dp
+                    )
+                    .size(88.dp)
+                    .background(color = WahaTvColors.MediaScrimSoft, shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = shown.icon,
+                    contentDescription = shown.description,
+                    tint = WahaTvColors.OnMedia,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .testTag(
+                            TvTestTags.playerSeek(if (isRewind) "rewind" else "forward")
+                        )
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The progress bar along the bottom edge, drawn like the phone's: rounded track,
+ * filled played portion, and a dot at the played edge. The TV has no pointer to
+ * drag, so it is not focusable and the D-pad seeks in 10-second steps from the
+ * video itself.
+ *
+ * The position arrives as a lambda, not as a value: reading it in the draw phase
+ * means a new frame of playback repaints one node instead of re-composing the
+ * whole player twice a second. That is also why the whole bar is one node: the
+ * thumb is two more draw calls, not a second composable with its own layout.
  *
  * Forced LTR, exactly like the phone's control bar, so the bar fills from left to
  * right on an otherwise right-to-left screen.
  */
 @Composable
-internal fun PlayerBottomOverlay(
-    positionMs: Long,
-    durationMs: Long,
+private fun PlaybackProgressBar(
+    positionMs: () -> Long,
+    durationMs: () -> Long,
     modifier: Modifier = Modifier
 ) {
+    val trackColor = WahaTvColors.ProgressTrack
+    val barColor = WahaTvColors.Accent
+
+    Box(
+        modifier = modifier
+            // Tall enough to hold the dot without clipping it; the track itself is thin.
+            .height(22.dp)
+            .drawBehind {
+                val trackHeight = 6.dp.toPx()
+                val radius = trackHeight / 2f
+                val centreY = size.height / 2f
+                val trackTop = centreY - radius
+
+                drawRoundRect(
+                    color = trackColor,
+                    topLeft = Offset(0f, trackTop),
+                    size = Size(width = size.width, height = trackHeight),
+                    cornerRadius = CornerRadius(radius)
+                )
+
+                val total = durationMs()
+                if (total > 0L) {
+                    val fraction = (positionMs().toFloat() / total).coerceIn(0f, 1f)
+                    val playedWidth = size.width * fraction
+
+                    drawRoundRect(
+                        color = barColor,
+                        topLeft = Offset(0f, trackTop),
+                        size = Size(width = playedWidth, height = trackHeight),
+                        cornerRadius = CornerRadius(radius)
+                    )
+
+                    // The phone bar's thumb, in the same place: a solid dot riding the
+                    // played edge, kept inside the bar at both ends.
+                    val thumbRadius = 7.dp.toPx()
+                    drawCircle(
+                        color = barColor,
+                        radius = thumbRadius,
+                        center = Offset(
+                            x = playedWidth.coerceIn(thumbRadius, size.width - thumbRadius),
+                            y = centreY
+                        )
+                    )
+                }
+            }
+    )
+}
+
+/**
+ * The times at both ends with the bar between them.
+ */
+@Composable
+internal fun PlayerBottomOverlay(
+    positionMs: () -> Long,
+    durationMs: () -> Long,
+    modifier: Modifier = Modifier
+) {
+    // Each label is recomposed only when its own text changes — once a second at most.
+    val positionText by remember { derivedStateOf { formatPlaybackTime(positionMs()) } }
+    val durationText by remember { derivedStateOf { formatPlaybackTime(durationMs()) } }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(
             modifier = modifier
@@ -635,47 +737,39 @@ internal fun PlayerBottomOverlay(
                         listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))
                     )
                 )
-                .padding(horizontal = 48.dp, vertical = 16.dp),
+                .padding(horizontal = 48.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = formatPlaybackTime(positionMs),
+                text = positionText,
                 color = WahaTvColors.OnMedia,
-                style = MaterialTheme.typography.labelLarge
+                style = MaterialTheme.typography.labelLarge.playerSized(18f, 24f)
             )
 
-            Slider(
-                value = progressFraction(positionMs, durationMs),
-                onValueChange = {},
-                enabled = false,
-                colors = SliderDefaults.colors(
-                    disabledThumbColor = WahaTvColors.Accent,
-                    disabledActiveTrackColor = WahaTvColors.Accent,
-                    disabledInactiveTrackColor = WahaTvColors.ProgressTrack
-                ),
+            PlaybackProgressBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
                 modifier = Modifier
                     .weight(1f)
                     .testTag(TvTestTags.PlayerProgress)
             )
 
             Text(
-                text = formatPlaybackTime(durationMs),
+                text = durationText,
                 color = WahaTvColors.OnMedia,
-                style = MaterialTheme.typography.labelLarge
+                style = MaterialTheme.typography.labelLarge.playerSized(18f, 24f)
             )
         }
     }
 }
 
 /**
- * The panel the down key opens, in three tidy bands — transport, quality, then the
- * same "شاهد المزيد" rail the phone shows below the video.
+ * The panel the down key opens, in two tidy bands — transport, then the same
+ * "شاهد المزيد" rail the phone shows below the video.
  *
  * The transport row leads with the one control a viewer needs (play/pause), the
- * two 10-second buttons around it, and the save toggle at the far edge. The quality
- * choices sit together on their own row, where a quality is a choice among equals
- * rather than a fifth transport button.
+ * two 10-second buttons around it, and the save toggle at the far edge.
  *
  * Colours are deliberately neutral: translucent white chips on a near-black panel,
  * a white pill for the selected choice and the brand orange only as the focus ring.
@@ -686,9 +780,6 @@ internal fun PlayerBottomOverlay(
 internal fun PlayerPanel(
     videoId: String,
     isPlaying: Boolean,
-    qualityOptions: List<TvQualityOption>,
-    selectedQuality: TvQualityOption,
-    onQualitySelect: (TvQualityOption) -> Unit,
     onTogglePlayback: () -> Unit,
     onSeekBackward: () -> Unit,
     onSeekForward: () -> Unit,
@@ -697,11 +788,50 @@ internal fun PlayerPanel(
     initialFocusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
+    val focusManager = LocalFocusManager.current
+    // The first "شاهد المزيد" card: the transport row hands the remote to it on a down
+    // press, whichever control the viewer was on.
+    val firstSuggestionRequester = remember { FocusRequester() }
+    // Which band the remote is in, so a down press walks into the cards and does not
+    // bounce back out of them.
+    var inSuggestions by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(WahaTvColors.PanelBackground)
             .testTag(TvTestTags.PlayerPanel)
+            // The panel owns the D-pad while it is open, so the arrows are consumed here
+            // rather than handed to the framework's focus search: that search reads the
+            // space under the transport row as empty and moves the remote to a node the
+            // viewer cannot see. Down walks into the cards from *any* control, and a
+            // sideways press with nowhere to go leaves the remote exactly where it is.
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionDown -> {
+                        if (!inSuggestions && suggestions.isNotEmpty()) {
+                            runCatching { firstSuggestionRequester.requestFocus() }
+                        }
+                        true
+                    }
+
+                    Key.DirectionLeft, Key.DirectionRight -> {
+                        focusManager.moveFocus(
+                            if (event.key == Key.DirectionLeft) {
+                                FocusDirection.Left
+                            } else {
+                                FocusDirection.Right
+                            }
+                        )
+                        // Consumed even when there was nowhere to move: the press must be
+                        // rejected, not handed to whatever sits behind the panel.
+                        true
+                    }
+
+                    else -> false
+                }
+            }
     ) {
         // A hairline separates the panel from the video without a heavy edge.
         Box(
@@ -721,7 +851,10 @@ internal fun PlayerPanel(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // The remote is in the transport band until a card takes it.
+                    .onFocusChanged { if (it.hasFocus) inSuggestions = false },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -730,13 +863,13 @@ internal fun PlayerPanel(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     PanelActionButton(
-                        icon = Icons.Filled.Replay10,
+                        icon = TvIcons.Replay10,
                         description = "إرجاع ١٠ ثوانٍ",
                         onClick = onSeekBackward,
                         modifier = Modifier.testTag(TvTestTags.playerControl("rewind"))
                     )
                     PanelActionButton(
-                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        icon = if (isPlaying) TvIcons.Pause else TvIcons.PlayArrow,
                         description = if (isPlaying) "إيقاف مؤقت" else "تشغيل",
                         onClick = onTogglePlayback,
                         primary = true,
@@ -744,7 +877,7 @@ internal fun PlayerPanel(
                         modifier = Modifier.testTag(TvTestTags.playerControl("play_pause"))
                     )
                     PanelActionButton(
-                        icon = Icons.Filled.Forward10,
+                        icon = TvIcons.Forward10,
                         description = "تقديم ١٠ ثوانٍ",
                         onClick = onSeekForward,
                         modifier = Modifier.testTag(TvTestTags.playerControl("forward"))
@@ -754,39 +887,30 @@ internal fun PlayerPanel(
                 SavePill(videoId = videoId)
             }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "الجودة",
-                    color = WahaTvColors.TextMuted,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(end = 6.dp)
-                )
-
-                qualityOptions.forEach { option ->
-                    PanelPill(
-                        label = option.label,
-                        selected = option == selectedQuality,
-                        onClick = { onQualitySelect(option) },
-                        modifier = Modifier.testTag(TvTestTags.playerQuality(option.label))
-                    )
-                }
-            }
-
             if (suggestions.isNotEmpty()) {
                 Text(
                     text = "شاهد المزيد",
                     color = WahaTvColors.TextWarm,
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium.playerSized(20f, 27f)
                 )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(WahaTvDimens.CardSpacing)) {
-                    items(suggestions, key = { it.id }) { suggestion ->
+                // Read the saved set once for the row, so a save toggles one badge rather
+                // than recomposing every suggestion card.
+                val savedIds = SavedVideosStore.savedIds
+                LazyRow(
+                    modifier = Modifier.onFocusChanged { if (it.hasFocus) inSuggestions = true },
+                    horizontalArrangement = Arrangement.spacedBy(WahaTvDimens.CardSpacing)
+                ) {
+                    itemsIndexed(suggestions, key = { _, suggestion -> suggestion.id }) { index, suggestion ->
                         TvVideoCard(
                             video = suggestion,
                             onClick = { onVideoSelect(suggestion) },
-                            width = 240.dp
+                            modifier = if (index == 0) {
+                                Modifier.focusRequester(firstSuggestionRequester)
+                            } else {
+                                Modifier
+                            },
+                            width = 240.dp,
+                            isSaved = suggestion.id in savedIds
                         )
                     }
                 }
@@ -874,7 +998,7 @@ private fun PanelActionButton(
 }
 
 /**
- * A panel pill: a quality choice, or the save toggle. One shape, one D-pad path.
+ * A panel pill: the save toggle. One shape, one D-pad path.
  */
 @Composable
 private fun PanelPill(
@@ -919,7 +1043,7 @@ private fun PanelPill(
         Text(
             text = label,
             color = colors.content,
-            style = MaterialTheme.typography.labelLarge
+            style = MaterialTheme.typography.labelLarge.playerSized(18f, 24f)
         )
     }
 }
@@ -939,10 +1063,7 @@ private fun SavePill(videoId: String) {
         label = if (isSaved) "محفوظ" else "حفظ",
         selected = isSaved,
         onClick = { SavedVideosStore.toggle(videoId) },
-        leadingIcon = if (isSaved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+        leadingIcon = if (isSaved) TvIcons.Bookmark else TvIcons.BookmarkBorder,
         modifier = Modifier.testTag(TvTestTags.playerControl("save"))
     )
 }
-
-private fun progressFraction(positionMs: Long, durationMs: Long): Float =
-    if (durationMs <= 0L) 0f else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)

@@ -26,9 +26,14 @@ android {
 
     buildTypes {
         release {
+            // This is the build a set-top box installs: shrinking and optimizing is
+            // what removes the debug-time class loading and the reflection lookups
+            // R8 can resolve ahead of time. The TV-27 baseline profile is compiled
+            // into it, so the first frames skip the JIT warm-up too.
             optimization {
-                enable = false
+                enable = true
             }
+            proguardFiles("proguard-rules.pro")
         }
     }
     compileOptions {
@@ -57,9 +62,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.core.ktx)
 
-    // The TV screens reuse the phone build's icons (bookmark, history, home,
-    // search) so both apps' affordances stay identical.
-    implementation("androidx.compose.material:material-icons-extended")
+    // The screens draw the same Material glyphs the phone build uses, but from
+    // TvIcons: the extended set ships thousands of vectors (and their dex) for the
+    // sixteen this build draws.
     // The player's progress bar is the phone's own Material 3 Slider, from the
     // same BOM, so the two builds cannot drift into different-looking sliders.
     implementation(libs.androidx.compose.material3)
@@ -73,6 +78,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Ships the baseline profile (src/main/baseline-prof.txt) with the APK and
+    // installs it on first run, so the TV box starts warm instead of JIT-cold.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation(libs.junit)

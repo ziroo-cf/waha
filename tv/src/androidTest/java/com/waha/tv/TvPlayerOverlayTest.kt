@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.waha.tv.ui.screens.PlayerBottomOverlay
 import com.waha.tv.ui.screens.PlayerCenterOverlay
+import com.waha.tv.ui.screens.PlayerSeekOverlay
 import com.waha.tv.ui.screens.PlayerTopOverlay
 import com.waha.tv.ui.screens.TvPlayerFeedback
 import com.waha.tv.ui.theme.WahaTvTheme
@@ -47,12 +48,11 @@ class TvPlayerOverlayTest {
                     PlayerTopOverlay(
                         title = title,
                         category = category,
-                        qualityLabel = "تلقائي",
                         modifier = Modifier.align(Alignment.TopStart)
                     )
                     PlayerBottomOverlay(
-                        positionMs = 60_000L,
-                        durationMs = 120_000L,
+                        positionMs = { 60_000L },
+                        durationMs = { 120_000L },
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
@@ -102,7 +102,6 @@ class TvPlayerOverlayTest {
                 Box(modifier = Modifier.fillMaxSize()) {
                     PlayerCenterOverlay(
                         isPlaying = false,
-                        feedback = null,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
@@ -125,22 +124,57 @@ class TvPlayerOverlayTest {
     }
 
     @Test
-    fun aSeekPressShowsItsArrowInsteadOfText() {
+    fun aSeekPressShowsItsArrowAtTheSideItSeeksTowards() {
         rule.setContent {
             WahaTvTheme {
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                     PlayerCenterOverlay(
                         isPlaying = true,
-                        feedback = TvPlayerFeedback.Forward,
                         modifier = Modifier.align(Alignment.Center)
+                    )
+                    PlayerSeekOverlay(
+                        feedback = TvPlayerFeedback.Forward,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
         }
 
-        rule.onNodeWithTag(TvTestTags.PlayerCenter).assertIsDisplayed()
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val arrow = rule.onNodeWithTag(TvTestTags.playerSeek("forward"))
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+
+        // Forward belongs at the right edge, clear of the pause glyph in the middle.
+        assertTrue("the forward hint must sit at the right side", arrow.center.x > root.width * 0.65f)
+        assertTrue(
+            "the hint must stay on the vertical centre",
+            kotlin.math.abs(arrow.center.y - root.center.y) < root.height / 6f
+        )
         rule.onNodeWithContentDescription("تقديم ١٠ ثوانٍ").assertIsDisplayed()
-        // No numbers anywhere: the seek hint is a glyph, not a caption.
-        rule.onNodeWithText("١٠ ثوانٍ").assertDoesNotExist()
+        // The middle still says what playback is doing, not what the seek did.
+        rule.onNodeWithTag(TvTestTags.PlayerCenter).assertIsDisplayed()
+    }
+
+    @Test
+    fun aRewindPressSitsAtTheOppositeSide() {
+        rule.setContent {
+            WahaTvTheme {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                    PlayerSeekOverlay(
+                        feedback = TvPlayerFeedback.Rewind,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val arrow = rule.onNodeWithTag(TvTestTags.playerSeek("rewind"))
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+
+        assertTrue("the rewind hint must sit at the left side", arrow.center.x < root.width * 0.35f)
+        rule.onNodeWithContentDescription("إرجاع ١٠ ثوانٍ").assertIsDisplayed()
     }
 }

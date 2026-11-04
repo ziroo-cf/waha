@@ -1,5 +1,6 @@
 package com.waha.data
 
+import androidx.room.withTransaction
 import com.waha.domain.VideoItem
 import com.waha.domain.toVideoItem
 import io.github.jan.supabase.postgrest.from
@@ -54,6 +55,18 @@ open class VideoRepository {
     private var lastSuccessfulSyncMs = 0L
 
     /**
+     * Rows the last completed sync left in the cache, or null if no sync has finished in
+     * this process yet.
+     *
+     * The empty library needs this distinction: Room only emits when a write invalidates
+     * it, so a library that is genuinely empty emits exactly one empty list and then
+     * nothing — which the screens read as "still loading" forever. After a completed
+     * sync, zero rows is an answer rather than a pending read.
+     */
+    @Volatile
+    private var lastSyncedVideoCount: Int? = null
+
+    /**
      * The cached library, newest first, re-emitted by Room after every write.
      *
      * Mapping runs on [Dispatchers.Default]; the collector only receives the
@@ -64,6 +77,12 @@ open class VideoRepository {
         database.videoDao().observeVideos()
             .map { entities -> entities.map { it.toVideoItem() } }
             .flowOn(defaultDispatcher)
+
+    /**
+     * Rows the last completed sync left in the cache, or null before this process has
+     * completed one. See [lastSyncedVideoCount].
+     */
+    open fun syncedVideoCount(): Int? = lastSyncedVideoCount
 
     /**
      * The same cache, pre-shaped for the browse screens: the full list plus the
@@ -135,16 +154,29 @@ open class VideoRepository {
         val entities = withContext(defaultDispatcher) {
             walk.rows.map { it.toVideoEntity(startedAt) }
         }
-        entities.chunked(UPSERT_CHUNK).forEach { dao.upsertAll(it) }
 
-        // Only a walk that reached the end knows the whole library, so only it
-        // may drop rows that were unpublished upstream.
-        if (walk.complete) {
-            dao.deleteNotInGeneration(startedAt)
+        // One transaction, for two reasons. Room's invalidation tracker fires once per
+        // committed transaction, so chunked writes outside one would make the cache
+        // stream emit once per 500 rows — and the home screen rebuilds its rails on
+        // every emission. It also makes the whole write atomic: a failure part-way
+        // through leaves the previous cache exactly as it was.
+        //
+        // Only a walk that reached the end knows the whole library, so only it may
+        // drop rows that were unpublished upstream; that delete belongs in the same
+        // transaction, or the cache would be observable with rows already gone.
+        database.withTransaction {
+            entities.chunked(UPSERT_CHUNK).forEach { dao.upsertAll(it) }
+            if (walk.complete) {
+                dao.deleteNotInGeneration(startedAt)
+            }
         }
 
         val finishedAt = System.currentTimeMillis()
+        val cachedCount = dao.count()
         lastSuccessfulSyncMs = finishedAt
+        // Recorded after the transaction committed, so "zero rows" always describes the
+        // cache the screens are about to read.
+        lastSyncedVideoCount = cachedCount
         metadataDao.upsert(
             SyncMetadataEntity(
                 lastSyncAtMs = finishedAt,
@@ -152,7 +184,7 @@ open class VideoRepository {
                 completeWalk = walk.complete || (cacheWasComplete && walk.rows.isNotEmpty()),
                 lastCursorCreatedAt = walk.lastCursor?.createdAt,
                 lastCursorId = walk.lastCursor?.id,
-                cachedVideoCount = dao.count()
+                cachedVideoCount = cachedCount
             )
         )
     }

@@ -68,15 +68,11 @@ class TvTopNavTest {
     }
 
     @Test
-    fun `a destination swaps its outlined glyph for the filled one while focused`() {
+    fun `every destination keeps one filled glyph, focused or not`() {
         TvDestination.entries.forEach { destination ->
             assertTrue(
-                "${destination.name} must rest as an outlined icon, was ${destination.icon.name}",
-                destination.icon.name.startsWith("Outlined.")
-            )
-            assertTrue(
-                "${destination.name} must fill in while focused, was ${destination.focusedIcon.name}",
-                destination.focusedIcon.name.startsWith("Filled.")
+                "${destination.name} must be a filled glyph, was ${destination.icon.name}",
+                destination.icon.name.startsWith("Filled.")
             )
         }
     }

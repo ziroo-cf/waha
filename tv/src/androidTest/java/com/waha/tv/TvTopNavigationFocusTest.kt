@@ -16,15 +16,18 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.requestFocus
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.waha.domain.VideoItem
 import com.waha.tv.ui.screens.TvDestination
 import com.waha.tv.ui.screens.TvHomeScreen
 import com.waha.tv.ui.screens.TvMainScreen
+import com.waha.tv.ui.screens.TvRails
 import com.waha.tv.ui.screens.TvUiState
 import com.waha.tv.ui.screens.WahaTvDimens
 import com.waha.tv.ui.theme.WahaTvTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -97,13 +100,19 @@ class TvTopNavigationFocusTest {
                     }
                 ) {
                     TvHomeScreen(
-                        uiState = TvUiState.Ready(videos),
+                        uiState = TvUiState.Ready(videos, TvRails.build(videos)),
                         onVideoClick = { played = it.id },
                         onRetry = {}
                     )
                 }
             }
         }
+
+        // The shelf claims the remote when the page opens (its first card in "الكل"), so
+        // a test about the rail has to put the remote on the rail itself. Everything
+        // below is about what the rail does once it has focus.
+        rule.onNodeWithTag(TvTestTags.nav(TvDestination.Home)).requestFocus()
+        rule.waitForIdle()
     }
 
     @Test
@@ -129,22 +138,36 @@ class TvTopNavigationFocusTest {
     }
 
     @Test
-    fun theRailRunsDownTheRightEdgeWithTheShelfBesideIt() {
+    fun theRailRunsDownTheRightEdgeWithoutMovingTheShelf() {
         showShell()
 
         val rail = rule.onNodeWithTag(TvTestTags.SideBar).fetchSemanticsNode().boundsInRoot
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         val firstCard = rule.onAllNodesWithTag(TvTestTags.card("v1")).onFirst()
             .fetchSemanticsNode().boundsInRoot
-        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val restingWidth = with(rule.density) { WahaTvDimens.railWidth(expanded = false).toPx() }
 
         assertTrue("the rail must be pinned to the right edge", root.right - rail.right <= 1f)
         assertTrue("the rail must be a strip of the screen, not half of it", rail.width < root.width / 2)
-        // The shelf starts where the rail ends: nothing — no bar, no header — stands between
-        // them.
-        assertTrue("the content must stop beside the rail", firstCard.right <= rail.left + 1f)
+        // The shelf starts beside the rail's resting strip: nothing — no bar, no header —
+        // stands between them. The open rail is an overlay, so it draws over the shelf
+        // rather than pushing it.
+        assertTrue(
+            "the shelf must clear the resting rail",
+            firstCard.right <= root.right - restingWidth + 1f
+        )
         // Compact rows: the first row is already on screen without a single press.
         assertTrue("the first card must be visible without scrolling", firstCard.bottom <= root.bottom)
         assertTrue("the first row must start near the top", firstCard.top < root.height / 2)
+
+        // Walking into the shelf folds the rail. The shelf must not move a pixel: that
+        // is the whole reason the rail is an overlay instead of a column of the layout.
+        walkIntoTheContent()
+        val cardAfter = rule.onAllNodesWithTag(TvTestTags.card("v1")).onFirst()
+            .fetchSemanticsNode().boundsInRoot
+
+        assertEquals("folding the rail must not move the shelf", firstCard.left, cardAfter.left, 1f)
+        assertEquals("folding the rail must not resize the shelf", firstCard.right, cardAfter.right, 1f)
     }
 
     @Test
@@ -238,11 +261,11 @@ class TvTopNavigationFocusTest {
     }
 
     /**
-     * Browsing the rail is choosing: one step onto a destination opens its page, with
-     * no centre key to remember.
+     * Browsing the rail is not choosing: moving the highlight must not open a page, or a
+     * quick scroll of the rail would compose every screen on the way.
      */
     @Test
-    fun browsingTheRailOpensTheDestinationWithoutPressingTheCentreKey() {
+    fun movingAlongTheRailDoesNotOpenAnythingUntilTheCentreKey() {
         showShell()
 
         rule.onNodeWithTag(TvTestTags.nav(TvDestination.Home)).assertIsFocused()
@@ -251,6 +274,9 @@ class TvTopNavigationFocusTest {
         rule.pressDPadKey(Key.DirectionDown)
 
         rule.onNodeWithTag(TvTestTags.nav(TvDestination.Library)).assertIsFocused()
+        assertNull("landing on a destination must not open it", selected)
+
+        rule.pressDPadKey(Key.DirectionCenter)
         assertEquals(TvDestination.Library, selected)
     }
 

@@ -27,8 +27,9 @@ data class TvRail(
  * [MAX_RAIL_ITEMS]: a category with hundreds of videos would otherwise always
  * show the same newest twenty, and a shelf that never changes is a shelf nobody
  * walks twice. The "الكل" row draws from the whole library, each category row
- * from that category only. The caller remembers the result, so the order is
- * stable while the viewer is on the screen and only changes with a new fetch.
+ * from that category only. [buildStable] is what the screen uses: its seed comes
+ * from the library's own content, so the order survives every cache re-emission and
+ * only a real change to the library can move it.
  */
 object TvRails {
 
@@ -83,4 +84,16 @@ object TvRails {
 
         return listOf(all) + categoryRails
     }
+
+    /**
+     * The same rows, in the order [seed] asks for.
+     *
+     * The shelf is re-derived every time Room re-emits the cache, and whenever the app
+     * is opened or the viewer presses reload. Seeding from a value held by the caller is
+     * what tells those two cases apart: the *same* seed must give the *same* order (or a
+     * card would jump across the shelf while the viewer is looking at it), and a *new*
+     * seed must give a new one (or a reload would look like nothing happened).
+     */
+    fun buildStable(videos: List<VideoItem>, seed: Long = 0L): List<TvRail> =
+        build(videos, Random(seed))
 }

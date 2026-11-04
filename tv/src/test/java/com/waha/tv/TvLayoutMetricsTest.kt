@@ -19,10 +19,10 @@ class TvLayoutMetricsTest {
     fun `cards are wide 16 by 9 landscape`() {
         assertEquals(16f / 9f, WahaTvDimens.CardAspectRatio, 0.0001f)
 
-        // Wide enough to read from a sofa, narrow enough that a rail shows about
-        // three and a half of them on a 720p screen (about 960dp across).
-        assertTrue(WahaTvDimens.CardWidth >= 200.dp)
-        assertTrue(WahaTvDimens.CardWidth <= 320.dp)
+        // Wide enough to read from a sofa, narrow enough that a rail still shows
+        // about three of them on a 720p screen.
+        assertTrue(WahaTvDimens.CardWidth >= 300.dp)
+        assertTrue(WahaTvDimens.CardWidth <= 420.dp)
     }
 
     @Test
@@ -45,7 +45,7 @@ class TvLayoutMetricsTest {
         val focused = WahaTvDimens.railWidth(expanded = true)
 
         // Folded, the rail is icons only: a strip, not a panel of the screen.
-        assertTrue("the resting rail should be an icon wide", resting <= 80.dp)
+        assertTrue("the resting rail should be an icon wide", resting <= 96.dp)
         // Open, it has to hold an icon and a destination name side by side.
         assertTrue("the open rail must have room for names", focused >= 200.dp)
         assertTrue("opening the rail must widen it", resting < focused)
@@ -83,7 +83,19 @@ class TvLayoutMetricsTest {
 
     @Test
     fun `the keyboard stays short enough to leave the results visible`() {
-        assertEquals(36.dp, WahaTvDimens.KeyboardKeyHeight)
-        assertEquals(4.dp, WahaTvDimens.KeyboardKeyGap)
+        assertEquals(54.dp, WahaTvDimens.KeyboardKeyHeight)
+        assertEquals(6.dp, WahaTvDimens.KeyboardKeyGap)
+    }
+
+    @Test
+    fun `the browse UI is half again the size it was designed at`() {
+        // One scale knob (WahaTvDimens.UIScale) grows the whole browse UI; the player
+        // keeps its own numbers, which is why its panel padding is not in this list.
+        assertEquals(72.dp, WahaTvDimens.ScreenPadding)
+        assertEquals(360.dp, WahaTvDimens.CardWidth)
+        assertEquals(84.dp, WahaTvDimens.RailWidthResting)
+
+        // The player panel is the exception: it sits over the video.
+        assertEquals(32.dp, WahaTvDimens.PlayerPanelPadding)
     }
 }

@@ -2,55 +2,21 @@ package com.waha.tv
 
 import com.waha.data.WatchHistoryCodec
 import com.waha.domain.ContinueWatching
-import com.waha.domain.PlayerQuality
-import com.waha.tv.ui.screens.TV_QUALITY_OPTIONS
-import com.waha.tv.ui.screens.qualityOptionFor
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Verifies the two playback preferences the TV build keeps between sessions:
- * where the viewer stopped, and the quality they chose.
+ * Verifies the playback preference the TV build keeps between sessions: where
+ * the viewer stopped.
  *
  * The stores themselves need Android (DataStore / SharedPreferences), so what
- * is exercised here is the persisted format plus the TV-side mapping on top of
- * it — the parts that would silently lose a value if they drifted.
+ * is exercised here is the persisted format on top of them — the part that would
+ * silently lose a position if it drifted.
  */
 class TvPlaybackPreferencesTest {
 
     private val tenMinutes = 10 * 60_000L
-
-    // --- Preferred quality -------------------------------------------------
-
-    @Test
-    fun `every quality option survives being saved and restored`() {
-        TV_QUALITY_OPTIONS.forEach { option ->
-            val stored = PlayerQuality.encode(option.maxHeight)
-            val restored = PlayerQuality.decode(stored)
-
-            assertEquals(option, qualityOptionFor(restored))
-        }
-    }
-
-    @Test
-    fun `auto is the default and the fallback`() {
-        assertEquals(TV_QUALITY_OPTIONS.first(), qualityOptionFor(null))
-        assertEquals(TV_QUALITY_OPTIONS.first(), qualityOptionFor(PlayerQuality.decode(null)))
-
-        // A height the panel does not offer (an older build's choice) must not
-        // leave the panel with no selected chip.
-        assertEquals(TV_QUALITY_OPTIONS.first(), qualityOptionFor(480))
-    }
-
-    @Test
-    fun `option labels come from the shared formatter`() {
-        assertNull(TV_QUALITY_OPTIONS.first().maxHeight)
-        TV_QUALITY_OPTIONS.forEach { option ->
-            assertEquals(PlayerQuality.label(option.maxHeight), option.label)
-        }
-    }
 
     // --- Saved playback position -------------------------------------------
 

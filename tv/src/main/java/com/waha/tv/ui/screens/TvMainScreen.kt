@@ -19,32 +19,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.onClick as semanticsOnClick
 import androidx.compose.ui.semantics.semantics
@@ -69,34 +66,16 @@ enum class TvDestination(val label: String) {
     Settings("الإعدادات");
 
     /**
-     * The destination's icon, resolved on demand rather than in the enum's
-     * constructor so the navigation model itself stays plain data a JVM unit
-     * test can read without loading Compose artwork.
-     *
-     * This is the resting glyph: outlined, to sit quietly in the folded rail.
-     * The remote landing on the item swaps it for [focusedIcon].
+     * The destination's icon — solid whether it is resting, focused or selected —
+     * resolved on demand rather than in the enum's constructor so the navigation model
+     * itself stays plain data a JVM unit test can read without loading Compose artwork.
      */
     val icon: ImageVector
         get() = when (this) {
-            Home -> Icons.Outlined.Home
-            Search -> Icons.Outlined.Search
-            Library -> Icons.Outlined.VideoLibrary
-            Settings -> Icons.Outlined.Settings
-        }
-
-    /**
-     * The solid twin of [icon], drawn the moment the remote lands on the item.
-     *
-     * Outlined and filled are different glyphs rather than one tint, which is how a
-     * TV says "the remote is here" at a glance from the sofa: the shape itself
-     * fills in, in the same frame the focus arrives.
-     */
-    val focusedIcon: ImageVector
-        get() = when (this) {
-            Home -> Icons.Filled.Home
-            Search -> Icons.Filled.Search
-            Library -> Icons.Filled.VideoLibrary
-            Settings -> Icons.Filled.Settings
+            Home -> TvIcons.Home
+            Search -> TvIcons.Search
+            Library -> TvIcons.VideoLibrary
+            Settings -> TvIcons.Settings
         }
 
     companion object {
@@ -123,11 +102,20 @@ enum class TvDestination(val label: String) {
  * `NavigationDrawer`: that component animates its own width and slides each name in, and
  * offers no way to turn the animation off.
  *
- * Walking the rail is choosing: the moment the remote lands on a destination the page
- * behind it changes, with no centre press to remember. Only one case is exempt — coming
- * back from the content, where the press that left the page is spent snapping the remote
- * onto the destination the viewer is actually on instead of opening whichever icon the
- * focus engine happened to find at that height.
+ * The rail is also an **overlay**, not a column of the layout: the shelf is inset by the
+ * folded rail's width once and never resized again, so opening the rail paints over the
+ * shelf instead of re-measuring every row on it. A 200dp width change would otherwise
+ * relayout the whole visible library in the one frame the viewer is moving the remote.
+ *
+ * Walking the rail only moves the highlight; the centre key opens the page. That is one
+ * press more than "focus is choosing", and it is the right trade on a weak TV: every
+ * focus step would otherwise tear down a screen and build the next one — a search page
+ * is a keyboard of thirty-five keys — so scrolling the rail quickly would stutter through
+ * pages the viewer never meant to open. The press that opens a page also hands the remote to
+ * it — focus steps into the content and the rail folds, so the page is never left with its
+ * open-rail edge covered. Coming back from the content is still snapped onto the destination
+ * the viewer is actually on, rather than whichever icon the focus engine happened to find at
+ * that height.
  *
  * There is no bar above the content: the rail names every page, and a 10-foot screen has
  * no room to spend a header on repeating the destination that is already highlighted two
@@ -138,6 +126,11 @@ enum class TvDestination(val label: String) {
 fun TvMainScreen(
     destination: TvDestination,
     onDestinationSelect: (TvDestination) -> Unit,
+    /**
+     * Bumped when the player closes. Non-zero values put the remote back on the card the
+     * viewer opened, or on the rail when that card has left the screen.
+     */
+    focusRestoreTicks: Int = 0,
     content: @Composable () -> Unit
 ) {
     // Which destination the remote is on, if any: that, and only that, is what opens the
@@ -145,6 +138,12 @@ fun TvMainScreen(
     // container, because a container that is not itself focusable is not told when a child
     // takes focus on a real TV.
     var focusedDestination by remember { mutableStateOf<TvDestination?>(null) }
+
+    // True for the one destination change the viewer made with the centre key. The page
+    // has just opened, so the remote belongs to it: focus steps into the content and the
+    // rail folds, instead of being pulled back onto the icon that opened it.
+    var enteringPage by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     // Bumped when the remote arrives from a page. The rail answers it by moving the remote
     // to the destination the viewer is actually on (see TvSideRail).
@@ -154,30 +153,65 @@ fun TvMainScreen(
     // apart from a step inside the rail (both look like "no destination was focused, now one
     // is"); a key press can, since the rail was demonstrably out of focus when it happened.
     var pressedOnAPage by remember { mutableStateOf(false) }
-    // True once the viewer has pressed a key *on the rail*, which is what makes the next
-    // destination focus a deliberate choice worth opening. Without it, the focus the layout
-    // itself places when a screen appears (the rail's first icon, or the snap back to the
-    // working destination) would be read as the viewer choosing it.
-    var movedOnTheRail by remember { mutableStateOf(false) }
+    // Hoisted out of [TvSideRail] so the shell can fall back to it when a card that the
+    // player covered is no longer on screen.
+    val railFocusRequester = remember { FocusRequester() }
+    val cardFocusMemory = LocalTvCardFocusMemory.current
 
-    Row(
+    // The player has just closed. Its handler used to hand the remote back to the rail,
+    // which on a shelf of six rows means the viewer walks back to their card by hand; the
+    // card they opened is still composed underneath, so focus goes there instead. Only a
+    // card that has since left the screen falls back to the rail.
+    LaunchedEffect(focusRestoreTicks) {
+        if (focusRestoreTicks == 0) return@LaunchedEffect
+        withFrameNanos { }
+        val restored = cardFocusMemory?.restore() == true
+        if (!restored) runCatching { railFocusRequester.requestFocus() }
+    }
+    // Hands the remote to the page the centre key just opened. It runs after the new
+    // destination has been composed, because the page's own nodes do not exist yet when
+    // the key is handled; one frame gives them a chance to be placed.
+    LaunchedEffect(enteringPage, destination) {
+        if (!enteringPage) return@LaunchedEffect
+        withFrameNanos { }
+        focusManager.moveFocus(FocusDirection.Left)
+        enteringPage = false
+    }
+
+    // One background for the whole shell lives in TvApp, above this: filling the screen
+    // here as well would paint the same colour twice every frame.
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(WahaTvColors.Background)
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    if (focusedDestination == null) pressedOnAPage = true else movedOnTheRail = true
+                if (event.type == KeyEventType.KeyDown && focusedDestination == null) {
+                    pressedOnAPage = true
                 }
                 false
             }
     ) {
-        // The rail is the first column, which in this right-to-left layout is the screen's
-        // right edge; the screen fills what is left.
+        // The shelf reserves the folded rail's strip once, and keeps it whatever the rail
+        // does: the content's width is constant, so only the rail itself is ever measured
+        // again when the remote enters or leaves it.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = WahaTvDimens.RailWidthResting)
+        ) { content() }
+
+        // The rail sits on the screen's right edge — the edge an Arabic layout starts from
+        // — above the shelf, which it covers only while the remote is on it.
         TvSideRail(
+            modifier = Modifier.align(Alignment.TopStart),
             current = destination,
             expanded = focusedDestination != null,
             refocusRequests = refocusRequests,
-            onSelect = onDestinationSelect,
+            selectedRequester = railFocusRequester,
+            onSelect = { selected ->
+                enteringPage = true
+                onDestinationSelect(selected)
+            },
+            skipAutoFocus = enteringPage,
             onItemFocusChanged = { item, itemFocused ->
                 if (itemFocused) {
                     // The remote has just walked in from a page: the focus engine picked the
@@ -186,19 +220,9 @@ fun TvMainScreen(
                     // that is where the viewer left off, and the one thing on the rail they
                     // can be sure about.
                     val arrivedFromPage = pressedOnAPage
-                    val browsedByTheViewer = !arrivedFromPage && movedOnTheRail
                     pressedOnAPage = false
-                    movedOnTheRail = false
                     focusedDestination = item
-                    if (arrivedFromPage) {
-                        if (item != destination) refocusRequests++
-                    } else if (browsedByTheViewer && item != destination) {
-                        // Browsing the rail is choosing: the page opens under the remote as
-                        // soon as it lands on a destination, with no centre press. Only the
-                        // arrival from a page is exempt — that press belongs to the snap
-                        // back to the page the viewer is on (above).
-                        onDestinationSelect(item)
-                    }
+                    if (arrivedFromPage && item != destination) refocusRequests++
                 } else if (focusedDestination == item) {
                     // A departure only clears the state if the viewer has not already
                     // landed on another destination, so two reports in one dispatch can
@@ -207,8 +231,6 @@ fun TvMainScreen(
                 }
             }
         )
-
-        Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
     }
 }
 
@@ -223,16 +245,34 @@ private fun TvSideRail(
     current: TvDestination,
     expanded: Boolean,
     refocusRequests: Int,
+    /** The requester on the working destination, owned by the shell. */
+    selectedRequester: FocusRequester,
     onSelect: (TvDestination) -> Unit,
-    onItemFocusChanged: (TvDestination, Boolean) -> Unit
+    /** True while the page a centre-key press just opened still owns the remote. */
+    skipAutoFocus: Boolean,
+    onItemFocusChanged: (TvDestination, Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val selectedRequester = remember { FocusRequester() }
+    // Read once in composition: the hairline is drawn in the draw phase, where the theme
+    // cannot be read.
+    val lineColor = WahaTvColors.Line
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .width(WahaTvDimens.railWidth(expanded))
             .fillMaxHeight()
-            .background(WahaTvColors.railGlass())
+            // One opaque fill: the rail is open over the shelf while the remote is on it,
+            // so translucency here would show cards through the names.
+            .background(WahaTvColors.Surface)
+            .drawBehind {
+                // A 1dp hairline on the edge the shelf runs against — the rail's left edge,
+                // which is where the content is in this right-to-left layout.
+                drawRect(
+                    color = lineColor,
+                    topLeft = Offset.Zero,
+                    size = Size(1.dp.toPx(), size.height)
+                )
+            }
             .testTag(TvTestTags.SideBar),
         verticalArrangement = Arrangement.spacedBy(WahaTvDimens.RailItemSpacing)
     ) {
@@ -262,7 +302,12 @@ private fun TvSideRail(
     // means the rail is open from the moment that screen appears. The same request answers
     // an arrival from the content: focus has just landed on whichever icon the focus engine
     // found, and the viewer expects the one that is running.
-    LaunchedEffect(current, refocusRequests) { selectedRequester.requestFocus() }
+    LaunchedEffect(current, refocusRequests) {
+        // A page the viewer has just opened owns the remote; the rail does not take it
+        // back. The arrival from the content still snaps onto the working destination.
+        if (skipAutoFocus) return@LaunchedEffect
+        selectedRequester.requestFocus()
+    }
 }
 
 /** The rail's header: the Waha mark always, the wordmark while the rail is open. */
@@ -307,11 +352,11 @@ private fun TvRailDivider(expanded: Boolean) {
 /**
  * One destination in the rail.
  *
- * Focus is shown the way the rest of the app shows it — an accent fill, a thick accent
- * ring and the destination's outlined icon swapped for its filled twin, all applied in the
- * same frame the remote lands — and the name is drawn only while the rail is open. Nothing
- * here animates: the item is the same size in every state, so walking the rail cannot move
- * anything.
+ * Focus is shown the way the rest of the app shows it — an accent fill and a thick accent
+ * ring, both applied in the same frame the remote lands — and the name is drawn only while
+ * the rail is open. The glyph itself never changes: it is solid whether the remote is on
+ * the item or not. Nothing here animates: the item is the same size in every state, so
+ * walking the rail cannot move anything.
  */
 @Composable
 private fun TvRailItem(
@@ -339,7 +384,6 @@ private fun TvRailItem(
                     isFocused -> BorderStroke(WahaTvDimens.FocusBorderWidth, WahaTvColors.Accent)
                     // The page the viewer is on keeps a thin accent outline while the remote
                     // is elsewhere, so "where am I" never depends on focus alone.
-                    selected -> BorderStroke(1.dp, WahaTvColors.Accent)
                     else -> BorderStroke(0.dp, Color.Transparent)
                 },
                 shape = RoundedCornerShape(WahaTvDimens.CornerRadius)
@@ -365,7 +409,7 @@ private fun TvRailItem(
         horizontalArrangement = Arrangement.spacedBy(WahaTvDimens.RailLabelSpacing)
     ) {
         Icon(
-            imageVector = if (isFocused) destination.focusedIcon else destination.icon,
+            imageVector = destination.icon,
             contentDescription = null,
             tint = contentColor,
             modifier = Modifier.size(WahaTvDimens.RailIconSize)

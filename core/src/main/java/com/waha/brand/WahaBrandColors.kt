@@ -42,7 +42,7 @@ object WahaBrandColors {
 
     // --- Dark scheme (the living-room default) ----------------------------
     val PrimaryDark = Color(0xFFFF6600)
-    val OnPrimaryDark = Color(0xFF00332B)
+    val OnPrimaryDark = Color(0xFFFFFFFF)
     val PrimaryContainerDark = Color(0xFF00695C)
     val OnPrimaryContainerDark = Color(0xFF7FFFEB)
 

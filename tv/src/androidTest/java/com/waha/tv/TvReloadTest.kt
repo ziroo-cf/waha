@@ -14,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.waha.domain.VideoItem
 import com.waha.tv.ui.screens.RELOAD_LABEL
 import com.waha.tv.ui.screens.TvHomeScreen
+import com.waha.tv.ui.screens.TvRails
 import com.waha.tv.ui.screens.TvUiState
 import com.waha.tv.ui.theme.WahaTvTheme
 import org.junit.Assert.assertEquals
@@ -49,7 +50,7 @@ class TvReloadTest {
         rule.setContent {
             WahaTvTheme {
                 TvHomeScreen(
-                    uiState = TvUiState.Ready(videos),
+                    uiState = TvUiState.Ready(videos, TvRails.build(videos)),
                     onVideoClick = {},
                     onRetry = { reloads++ }
                 )

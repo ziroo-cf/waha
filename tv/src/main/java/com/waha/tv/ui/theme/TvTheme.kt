@@ -6,17 +6,13 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
-import androidx.tv.material3.lightColorScheme
 import com.waha.brand.WahaBrandColors
 
 /**
- * The TV colour scheme, built from the exact literals the phone build uses
+ * The TV's only colour scheme, built from the exact literals the phone build uses
  * ([WahaBrandColors]) so both screens feel like one product.
- *
- * Dark is the living-room default; the light scheme is kept alongside it so the
- * theme can follow the phone's saved preference later.
  */
-private val WahaTvDarkColorScheme = darkColorScheme(
+private val WahaTvColorScheme = darkColorScheme(
     primary = WahaBrandColors.PrimaryDark,
     onPrimary = WahaBrandColors.OnPrimaryDark,
     primaryContainer = WahaBrandColors.PrimaryContainerDark,
@@ -40,42 +36,18 @@ private val WahaTvDarkColorScheme = darkColorScheme(
     border = WahaBrandColors.OutlineDark
 )
 
-private val WahaTvLightColorScheme = lightColorScheme(
-    primary = WahaBrandColors.PrimaryLight,
-    onPrimary = WahaBrandColors.OnPrimaryLight,
-    primaryContainer = WahaBrandColors.PrimaryContainerLight,
-    onPrimaryContainer = WahaBrandColors.OnPrimaryContainerLight,
-    secondary = WahaBrandColors.SecondaryLight,
-    onSecondary = WahaBrandColors.OnSecondaryLight,
-    secondaryContainer = WahaBrandColors.SecondaryContainerLight,
-    onSecondaryContainer = WahaBrandColors.OnSecondaryContainerLight,
-    tertiary = WahaBrandColors.TertiaryLight,
-    onTertiary = WahaBrandColors.OnTertiaryLight,
-    tertiaryContainer = WahaBrandColors.TertiaryContainerLight,
-    onTertiaryContainer = WahaBrandColors.OnTertiaryContainerLight,
-    error = WahaBrandColors.ErrorLight,
-    onError = WahaBrandColors.OnErrorLight,
-    background = WahaBrandColors.BackgroundLight,
-    onBackground = WahaBrandColors.OnBackgroundLight,
-    surface = WahaBrandColors.SurfaceLight,
-    onSurface = WahaBrandColors.OnSurfaceLight,
-    surfaceVariant = WahaBrandColors.SurfaceVariantLight,
-    onSurfaceVariant = WahaBrandColors.OnSurfaceVariantLight,
-    border = WahaBrandColors.OutlineLight
-)
-
+/**
+ * Waha on TV is dark, always: a living-room screen is watched in the dark, and the
+ * library's artwork is graded against black. Nothing here follows the phone's theme
+ * preference, and there is no light scheme to fall back to.
+ */
 @Composable
-fun WahaTvTheme(
-    darkTheme: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = if (darkTheme) WahaTvDarkColorScheme else WahaTvLightColorScheme
-
+fun WahaTvTheme(content: @Composable () -> Unit) {
     // Waha is an Arabic-first product: the whole TV layout runs right-to-left,
     // exactly like the phone build (sidebar on the right, rails flowing left).
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         MaterialTheme(
-            colorScheme = colorScheme,
+            colorScheme = WahaTvColorScheme,
             typography = WahaTvTypography,
             content = content
         )

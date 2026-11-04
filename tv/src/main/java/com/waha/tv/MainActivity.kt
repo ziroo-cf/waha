@@ -3,30 +3,43 @@ package com.waha.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.waha.data.PlayerPreferencesStore
-import com.waha.data.ThemePreferenceStore
+import androidx.activity.viewModels
 import com.waha.tv.ui.screens.TvApp
+import com.waha.tv.ui.screens.TvHomeViewModel
 import com.waha.tv.ui.theme.WahaTvTheme
 
 /**
  * Android TV entry point. Declared with a LEANBACK_LAUNCHER intent filter so it
  * appears on the TV home screen.
  *
- * The theme comes from [ThemePreferenceStore], the same preference the phone
- * build's settings screen writes — dark remains the living-room default.
+ * The TV build is dark-only ([WahaTvTheme]) and does not read the phone's theme
+ * preference.
  */
 class MainActivity : ComponentActivity() {
+
+    /**
+     * Held by the activity, not created inside the composition, so [onStart] can
+     * reshuffle the shelf the activity is already showing.
+     */
+    private val homeViewModel: TvHomeViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ThemePreferenceStore.init(this)
-        // Loaded before the first composition: the player reads the saved quality
-        // synchronously, so it must already be there.
-        PlayerPreferencesStore.init(this)
         setContent {
-            val darkMode = ThemePreferenceStore.isDarkMode.value
-            WahaTvTheme(darkTheme = darkMode) {
-                TvApp()
+            WahaTvTheme {
+                TvApp(homeViewModel)
             }
         }
+    }
+
+    /**
+     * Every time the app is opened — from the launcher, or back from another app while
+     * the process was still alive — the shelf takes a new order from the cache it
+     * already holds. No network walk: the viewer asked for a different order, not for a
+     * sync, and the shelf must be different the moment it appears.
+     */
+    override fun onStart() {
+        super.onStart()
+        homeViewModel.reshuffle()
     }
 }

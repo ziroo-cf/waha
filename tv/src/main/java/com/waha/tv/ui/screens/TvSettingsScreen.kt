@@ -5,7 +5,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,7 +23,6 @@ import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.waha.data.ThemePreferenceStore
 import com.waha.tv.BuildConfig
 import com.waha.tv.ui.theme.WahaTvColors
 
@@ -32,14 +30,13 @@ import com.waha.tv.ui.theme.WahaTvColors
  * The TV settings screen.
  *
  * The phone build reaches settings from the top bar; the TV build has it as the
- * last destination on its rail. Everything here is one deliberate press away: the
- * phone build's dark/light switch, the current version, and a short note about what
- * Waha is. The page's name is not repeated — the rail's highlighted icon holds it.
+ * last destination on its rail. There is no appearance section: the TV build is
+ * dark-only, so the only things to read here are the current version and a short
+ * note about what Waha is. The page's name is not repeated — the rail's
+ * highlighted icon holds it.
  */
 @Composable
 fun TvSettingsScreen() {
-    val isDarkMode by ThemePreferenceStore.isDarkMode
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -52,18 +49,6 @@ fun TvSettingsScreen() {
             ),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        TvSettingsSectionTitle("المظهر")
-
-        // The same preference the phone build's settings switch writes, so the
-        // two apps agree on the theme.
-        TvSettingsRow(
-            title = "الوضع الداكن",
-            value = if (isDarkMode) "مُفعّل" else "مُعطّل",
-            hint = "وضع مريح للعين",
-            onClick = { ThemePreferenceStore.setDarkMode(!isDarkMode) }
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
         TvSettingsSectionTitle("عن واحة")
 
         TvSettingsRow(
@@ -90,16 +75,14 @@ private fun TvSettingsSectionTitle(title: String) {
 }
 
 /**
- * One settings row: a focusable card that reads like a list item — title, a
- * value on the trailing side, and an optional hint. [onClick] makes it
- * actionable (the theme switch); without one it is pure information.
+ * One settings row: a focusable card that reads like a list item — title, a value on
+ * the trailing side, and an optional hint.
  */
 @Composable
 private fun TvSettingsRow(
     title: String,
     value: String,
-    hint: String? = null,
-    onClick: (() -> Unit)? = null
+    hint: String? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -107,7 +90,9 @@ private fun TvSettingsRow(
     val contentColor = tvItemContentColor(selected = false, isFocused = isFocused)
 
     Card(
-        onClick = { onClick?.invoke() },
+        // Informational, so the centre key does nothing — but the row stays focusable,
+        // so the remote walks the page instead of falling straight through it.
+        onClick = {},
         interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
@@ -115,8 +100,7 @@ private fun TvSettingsRow(
         shape = CardDefaults.shape(RoundedCornerShape(WahaTvDimens.CornerRadius)),
         colors = colors,
         scale = CardDefaults.scale(focusedScale = WahaTvDimens.FocusScale),
-        border = CardDefaults.border(focusedBorder = tvFocusBorder()),
-        glow = CardDefaults.glow(focusedGlow = tvFocusGlow())
+        border = CardDefaults.border(focusedBorder = tvFocusBorder())
     ) {
         Row(
             modifier = Modifier

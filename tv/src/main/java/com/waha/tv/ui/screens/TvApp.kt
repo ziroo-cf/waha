@@ -5,17 +5,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.waha.data.PlayerPreferencesStore
 import com.waha.data.RecentSearchesStore
 import com.waha.data.SavedVideosStore
 import com.waha.data.WatchHistoryStore
@@ -41,7 +43,6 @@ fun TvApp(viewModel: TvHomeViewModel = viewModel()) {
         SavedVideosStore.init(context)
         RecentSearchesStore.init(context)
         WatchHistoryStore.init(context)
-        PlayerPreferencesStore.init(context)
     }
 
     val uiState by viewModel.uiState.collectAsState()
@@ -49,23 +50,38 @@ fun TvApp(viewModel: TvHomeViewModel = viewModel()) {
 
     var destination by remember { mutableStateOf(TvDestination.Home) }
     var playingVideo by remember { mutableStateOf<VideoItem?>(null) }
+    // Bumped every time the viewer opens the shelf, so the remote lands on it rather than
+    // staying on the rail icon that opened it.
+    var homeFocusTicks by remember { mutableIntStateOf(0) }
+
+    // Which card the remote was last on, so closing the player puts it back there rather
+    // than at the top of the rail.
+    val cardFocusMemory = remember { TvCardFocusMemory() }
+    // Bumped when the player closes; the shell answers it by restoring that focus.
+    var focusRestoreTicks by remember { mutableIntStateOf(0) }
+
+    // Each destination keeps its own saved state — above all, where its list was
+    // scrolled to. Switching pages tears the screen down, so without this the viewer
+    // returns to a searched shelf at the first row, every time.
+    val screenStates = rememberSaveableStateHolder()
     // Where the player should pick the video up: the saved position when the
     // viewer paused part-way (the Continue Watching rail's cards), else 0.
     var resumeFromMs by remember { mutableStateOf(0L) }
-    // Held above the player so a quality choice survives jumping to another video
-    // from the "شاهد المزيد" rail, and restored from the saved preference so it
-    // survives restarting the app too.
-    var quality by remember { mutableStateOf(qualityOptionFor(PlayerPreferencesStore.qualityHeight.value)) }
 
     fun openVideo(video: VideoItem) {
         resumeFromMs = WatchHistoryStore.resumePositionMs(video.id)
         playingVideo = video
     }
 
+    fun closePlayer() {
+        playingVideo = null
+        focusRestoreTicks++
+    }
+
     // Back leaves the player first, then the current destination. The player
     // registers its own handler while its control panel is open, and Compose
     // gives the newest enabled handler the key, so the panel closes first.
-    BackHandler(enabled = playingVideo != null) { playingVideo = null }
+    BackHandler(enabled = playingVideo != null) { closePlayer() }
     BackHandler(enabled = playingVideo == null && destination != TvDestination.Home) {
         destination = TvDestination.Home
     }
@@ -77,26 +93,38 @@ fun TvApp(viewModel: TvHomeViewModel = viewModel()) {
     ) {
         TvMainScreen(
             destination = destination,
-            onDestinationSelect = { destination = it }
+            onDestinationSelect = { selected ->
+                if (selected == TvDestination.Home) homeFocusTicks++
+                destination = selected
+            },
+            focusRestoreTicks = focusRestoreTicks
         ) {
-            when (destination) {
-                TvDestination.Home -> TvHomeScreen(
-                    uiState = uiState,
-                    onVideoClick = ::openVideo,
-                    onRetry = viewModel::loadVideos
-                )
+            // The memory lives here, not above the player: a card in the player's own
+            // "شاهد المزيد" rail must not become the place the remote comes back to, or
+            // closing the player would look for a card that has left the screen.
+            CompositionLocalProvider(LocalTvCardFocusMemory provides cardFocusMemory) {
+                screenStates.SaveableStateProvider(destination.name) {
+                    when (destination) {
+                        TvDestination.Home -> TvHomeScreen(
+                            uiState = uiState,
+                            onVideoClick = ::openVideo,
+                            onRetry = viewModel::loadVideos,
+                            focusAllTicks = homeFocusTicks
+                        )
 
-                TvDestination.Search -> TvSearchScreen(
-                    allVideos = allVideos,
-                    onVideoClick = ::openVideo
-                )
+                        TvDestination.Search -> TvSearchScreen(
+                            allVideos = allVideos,
+                            onVideoClick = ::openVideo
+                        )
 
-                TvDestination.Library -> TvLibraryScreen(
-                    allVideos = allVideos,
-                    onVideoClick = ::openVideo
-                )
+                        TvDestination.Library -> TvLibraryScreen(
+                            allVideos = allVideos,
+                            onVideoClick = ::openVideo
+                        )
 
-                TvDestination.Settings -> TvSettingsScreen()
+                        TvDestination.Settings -> TvSettingsScreen()
+                    }
+                }
             }
         }
 
@@ -107,13 +135,8 @@ fun TvApp(viewModel: TvHomeViewModel = viewModel()) {
                 TvPlayerScreen(
                     video = video,
                     allVideos = allVideos,
-                    quality = quality,
-                    onQualityChange = {
-                        quality = it
-                        PlayerPreferencesStore.setQualityHeight(it.maxHeight)
-                    },
                     onVideoSelect = ::openVideo,
-                    onBack = { playingVideo = null },
+                    onBack = ::closePlayer,
                     startPositionMs = resumeFromMs
                 )
             }

@@ -28,6 +28,12 @@ object TvTestTags {
     /** The home screen's vertical list of rails. */
     const val HomeList = "tv_home_list"
 
+    /** The home screen's "nothing published yet" state. */
+    const val EmptyLibrary = "tv_empty_library"
+
+    /** The home screen's "could not load" state. */
+    const val ErrorState = "tv_error_state"
+
     /** The library's vertical list (المحفوظات over السجل). */
     const val LibraryList = "tv_library_list"
 
@@ -46,8 +52,11 @@ object TvTestTags {
     /** One transport button in the player panel ("play_pause", "rewind", "forward"). */
     fun playerControl(name: String): String = "tv_player_control_$name"
 
-    /** One quality pill in the player panel ("تلقائي", "1080p", …). */
-    fun playerQuality(label: String): String = "tv_player_quality_$label"
+    /** The buffering circle, drawn while a stream refills (a seek, a slow network). */
+    const val PlayerBuffering = "tv_player_buffering"
+
+    /** A seek hint at the side of the video ("rewind" or "forward"). */
+    fun playerSeek(name: String): String = "tv_player_seek_$name"
 
     /** The reload button below every rail, and in the error state. */
     const val ReloadButton = "tv_reload_button"

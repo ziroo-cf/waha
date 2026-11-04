@@ -141,4 +141,43 @@ class TvHomeRailsTest {
         assertTrue(first[1].videos.all { it.categoryKey == "أطفال" })
         assertTrue(first[2].videos.all { it.categoryKey == "طبخ" })
     }
+
+    @Test
+    fun `the shelves the screen shows do not move when the cache re-emits`() {
+        // Room re-emits the same library after every sync. The order the viewer is
+        // looking at must survive that, or cards jump across the shelf for no reason.
+        val many = (1..30).map { video("v$it", "رسوم متحركة") } +
+                (1..30).map { video("w$it", "أطفال") }
+
+        val first = TvRails.buildStable(many)
+        val again = TvRails.buildStable(many.toList())
+
+        assertEquals(
+            first.map { rail -> rail.videos.map(VideoItem::id) },
+            again.map { rail -> rail.videos.map(VideoItem::id) }
+        )
+        // Same rows, same caps: the reshuffle is gone, nothing else changed.
+        assertEquals(TvRails.MAX_RAIL_ITEMS, first.first().videos.size)
+        assertEquals(setOf("أطفال", "رسوم متحركة"), first.drop(1).map { it.key }.toSet())
+        first.drop(1).forEach { rail ->
+            assertEquals(TvRails.MAX_RAIL_ITEMS, rail.videos.size)
+        }
+    }
+
+    @Test
+    fun `one seed keeps the order and a new seed reshuffles it`() {
+        // The screen rebuilds its rows on every cache emission, on every app open and on
+        // every reload. The seed is what tells those apart: the same seed must give the
+        // same shelf (or cards jump while the viewer is looking), a new seed must give a
+        // new one (or a reload looks like nothing happened).
+        val many = (1..12).map { video("v$it", "رسوم متحركة") }
+
+        val first = TvRails.buildStable(many, seed = 1L).first().videos.map(VideoItem::id)
+        val again = TvRails.buildStable(many.toList(), seed = 1L).first().videos.map(VideoItem::id)
+        val reshuffled = TvRails.buildStable(many, seed = 2L).first().videos.map(VideoItem::id)
+
+        assertEquals(first, again)
+        assertEquals(first.toSet(), reshuffled.toSet())
+        assertTrue("a new seed must give a new order", first != reshuffled)
+    }
 }

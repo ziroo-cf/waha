@@ -4,8 +4,10 @@ import android.content.Context
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.waha.data.PipedApi
@@ -127,5 +129,44 @@ fun PipedPlaybackSource.toMediaSource(context: Context): MediaSource {
  * identically.
  */
 object WahaPlayer {
+
+    /** The phone's player: Media3's own buffer, on a device with memory to spare. */
     fun create(context: Context): ExoPlayer = ExoPlayer.Builder(context).build()
+
+    /**
+     * The TV build's player: the same player on a buffer a 1GB box can hold.
+     *
+     * Media3's default keeps up to fifty seconds buffered. That is comfortable on a
+     * phone, and it is a lot on a set-top box decoding a merged video + audio stream:
+     * two sources share the allocator, and when the buffered bytes meet a low-memory
+     * device the platform starts evicting pages under a running decoder — which shows up
+     * as a stutter or a re-initialised surface, not as an error. Twenty seconds is still
+     * several minutes of buffer for a low-bitrate 720p stream and leaves the decoder
+     * room to work.
+     *
+     * Playback starts sooner too (one second rather than two and a half), so the gap
+     * between pressing a card and the first frame is shorter on the box that needs it
+     * most.
+     */
+    fun createForTv(context: Context): ExoPlayer = ExoPlayer.Builder(context)
+        .setLoadControl(
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    TV_MIN_BUFFER_MS,
+                    TV_MAX_BUFFER_MS,
+                    TV_BUFFER_FOR_PLAYBACK_MS,
+                    TV_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+                )
+                // Smaller allocation chunks: less memory held at once, and a dropped
+                // buffer is cheaper to rebuild than one large allocation.
+                .setAllocator(DefaultAllocator(true, TV_ALLOCATION_CHUNK_BYTES))
+                .build()
+        )
+        .build()
+
+    private const val TV_MIN_BUFFER_MS = 15_000
+    private const val TV_MAX_BUFFER_MS = 20_000
+    private const val TV_BUFFER_FOR_PLAYBACK_MS = 1_000
+    private const val TV_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 2_000
+    private const val TV_ALLOCATION_CHUNK_BYTES = 64 * 1024
 }

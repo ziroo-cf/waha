@@ -17,12 +17,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +39,56 @@ import com.waha.data.RecentSearchesStore
 import com.waha.domain.VideoItem
 import com.waha.tv.TvTestTags
 import com.waha.tv.ui.theme.WahaTvColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+/** How long typing pauses before the library is filtered. */
+internal const val SEARCH_DEBOUNCE_MS = 120L
+
+/**
+ * What the viewer has typed, and which keyboard page they are on.
+ *
+ * The keyboard reads only [page] and the field only [query], so a keystroke recomposes
+ * the two nodes that show the text — never the thirty-five keys the viewer is walking
+ * with the remote. Marked stable so lambdas that capture it stay comparable too.
+ */
+@Stable
+internal class TvSearchState {
+
+    var query by mutableStateOf("")
+        private set
+
+    var page by mutableStateOf(TvKeyboard.Page.Arabic)
+        private set
+
+    fun type(text: String) {
+        query = TvKeyboard.append(query, text)
+    }
+
+    fun backspace() {
+        query = TvKeyboard.backspace(query)
+    }
+
+    fun clear() {
+        query = ""
+    }
+
+    /** Replaces the query wholesale (a recent search the viewer picked). */
+    fun showQuery(text: String) {
+        query = text
+    }
+
+    fun showPage(selected: TvKeyboard.Page) {
+        page = selected
+    }
+}
+
+/** A query and the videos that matched it, so the screen knows when a search settled. */
+private data class TvSearchResults(
+    val query: String = "",
+    val videos: List<VideoItem> = emptyList()
+)
 
 /**
  * TV search: the phone build's search overlay, re-thought for a remote.
@@ -52,19 +101,31 @@ import com.waha.tv.ui.theme.WahaTvColors
  * The results are one row of cards, and the keyboard never folds away: with the
  * results beside the keys instead of filling the screen, the viewer can keep
  * typing while watching the row narrow — no lost keyboard to press back into.
+ *
+ * Filtering is debounced and runs on a worker thread: a pass over the whole library
+ * must never sit between a key press and the frame that shows it, and a viewer who
+ * holds a key down should get one search, not one per letter.
  */
 @Composable
 fun TvSearchScreen(
     allVideos: List<VideoItem>,
     onVideoClick: (VideoItem) -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
-    var page by remember { mutableStateOf(TvKeyboard.Page.Arabic) }
+    val state = remember { TvSearchState() }
+    val query = state.query
     val recentQueries = RecentSearchesStore.recentQueries
 
-    val results = remember(query, allVideos) {
-        if (query.isBlank()) emptyList()
-        else allVideos.filter { TvKeyboard.matches(it.title, query) }
+    val results by produceState(TvSearchResults(), query, allVideos) {
+        if (query.isBlank()) {
+            value = TvSearchResults(query, emptyList())
+            return@produceState
+        }
+        // Every keystroke restarts this effect, so the pause is the debounce.
+        delay(SEARCH_DEBOUNCE_MS)
+        val matches = withContext(Dispatchers.Default) {
+            allVideos.filter { TvKeyboard.matches(it.title, query) }
+        }
+        value = TvSearchResults(query, matches)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -90,16 +151,14 @@ fun TvSearchScreen(
 
                 query.isBlank() -> TvRecentSearches(
                     recentQueries = recentQueries,
-                    onQuerySelect = { query = it },
+                    onQuerySelect = state::showQuery,
                     onClearAll = { RecentSearchesStore.clear() }
                 )
 
-                results.isEmpty() -> TvMessage("لم نجد أي نتائج لـ \"$query\"")
-
-                // One row of the same cards the home screen shows: the viewer
-                // scrolls the results sideways while the keyboard stays put.
-                else -> TvVideoRow(
-                    videos = results,
+                // While a search is still settling, the previous matches stay up: a
+                // 120ms blank or a flashed "no results" reads as a glitch.
+                results.videos.isNotEmpty() -> TvVideoRow(
+                    videos = results.videos,
                     onVideoClick = { video ->
                         RecentSearchesStore.add(query)
                         onVideoClick(video)
@@ -108,17 +167,20 @@ fun TvSearchScreen(
                         .padding(top = WahaTvDimens.CardSpacing / 2)
                         .testTag(TvTestTags.SearchResults)
                 )
+
+                results.query == query -> TvMessage("لم نجد أي نتائج لـ \"$query\"")
+
+                // The first search is still in flight: show nothing rather than a
+                // message that the next frame will contradict.
+                else -> Unit
             }
         }
 
         TvOnScreenKeyboard(
-            page = page,
-            onPageChange = { page = it },
-            onCharacter = { character -> query = TvKeyboard.append(query, character) },
-            onSpace = { query = TvKeyboard.append(query, " ") },
-            onBackspace = { query = TvKeyboard.backspace(query) },
-            onClear = { query = "" },
-            onSearch = { RecentSearchesStore.add(query) }
+            state = state,
+            // Remembered on the state so the keyboard's parameters do not change when
+            // the query does — that is what keeps its keys out of the recomposition.
+            onSearch = remember(state) { { RecentSearchesStore.add(state.query) } }
         )
     }
 }
@@ -146,7 +208,7 @@ private fun TvQueryField(query: String) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Search,
+                    imageVector = TvIcons.Search,
                     contentDescription = null,
                     tint = WahaTvColors.Accent,
                     modifier = Modifier.size(24.dp)
@@ -197,7 +259,7 @@ private fun TvRecentSearches(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.History,
+                        imageVector = TvIcons.History,
                         contentDescription = null,
                         tint = WahaTvColors.TextMuted,
                         modifier = Modifier.size(24.dp)
@@ -234,14 +296,13 @@ private fun TvRecentSearches(
  */
 @Composable
 private fun TvOnScreenKeyboard(
-    page: TvKeyboard.Page,
-    onPageChange: (TvKeyboard.Page) -> Unit,
-    onCharacter: (String) -> Unit,
-    onSpace: () -> Unit,
-    onBackspace: () -> Unit,
-    onClear: () -> Unit,
+    state: TvSearchState,
     onSearch: () -> Unit
 ) {
+    // The keyboard reads only the page it is on — never the query — so typing repaints the
+    // field and the results row while these thirty-five keys stay exactly as they are.
+    val page = state.page
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -257,12 +318,12 @@ private fun TvOnScreenKeyboard(
                 TvKeyButton(
                     label = entry.label,
                     selected = entry == page,
-                    onClick = { onPageChange(entry) }
+                    onClick = { state.showPage(entry) }
                 )
             }
-            TvKeyButton(label = "فراغ", onClick = onSpace)
-            TvKeyButton(label = "حذف", onClick = onBackspace)
-            TvKeyButton(label = "مسح", onClick = onClear)
+            TvKeyButton(label = "فراغ", onClick = { state.type(" ") })
+            TvKeyButton(label = "حذف", onClick = state::backspace)
+            TvKeyButton(label = "مسح", onClick = state::clear)
             TvKeyButton(label = "ابحث", onClick = onSearch)
         }
 
@@ -273,7 +334,7 @@ private fun TvOnScreenKeyboard(
                     rowKeys.forEach { key ->
                         TvKeyButton(
                             label = key,
-                            onClick = { onCharacter(key) }
+                            onClick = { state.type(key) }
                         )
                     }
                 }
@@ -323,8 +384,7 @@ internal fun TvKeyButton(
         shape = CardDefaults.shape(RoundedCornerShape(WahaTvDimens.CornerRadius)),
         colors = tvItemColors(selected = selected, isFocused = isFocused),
         scale = CardDefaults.scale(focusedScale = WahaTvDimens.FocusScale),
-        border = CardDefaults.border(focusedBorder = tvFocusBorder()),
-        glow = CardDefaults.glow(focusedGlow = tvFocusGlow())
+        border = CardDefaults.border(focusedBorder = tvFocusBorder())
     ) {
         Box(
             modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
