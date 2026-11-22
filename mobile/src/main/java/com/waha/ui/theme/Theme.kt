@@ -30,7 +30,22 @@ private val WahaDarkColorScheme = darkColorScheme(
     onSurface = OnSurfaceDark,
     surfaceVariant = SurfaceVariantDark,
     onSurfaceVariant = OnSurfaceVariantDark,
-    outline = OutlineDark
+    outline = OutlineDark,
+    outlineVariant = OutlineVariantDark,
+    errorContainer = ErrorContainerDark,
+    onErrorContainer = OnErrorContainerDark,
+    inverseSurface = InverseSurfaceDark,
+    inverseOnSurface = InverseOnSurfaceDark,
+    inversePrimary = InversePrimaryDark,
+    surfaceTint = SurfaceTintDark,
+    scrim = ScrimDark,
+    surfaceBright = SurfaceBrightDark,
+    surfaceDim = SurfaceDimDark,
+    surfaceContainerLowest = SurfaceContainerLowestDark,
+    surfaceContainerLow = SurfaceContainerLowDark,
+    surfaceContainer = SurfaceContainerDark,
+    surfaceContainerHigh = SurfaceContainerHighDark,
+    surfaceContainerHighest = SurfaceContainerHighestDark
 )
 
 private val WahaLightColorScheme = lightColorScheme(
@@ -54,7 +69,22 @@ private val WahaLightColorScheme = lightColorScheme(
     onSurface = OnSurfaceLight,
     surfaceVariant = SurfaceVariantLight,
     onSurfaceVariant = OnSurfaceVariantLight,
-    outline = OutlineLight
+    outline = OutlineLight,
+    outlineVariant = OutlineVariantLight,
+    errorContainer = ErrorContainerLight,
+    onErrorContainer = OnErrorContainerLight,
+    inverseSurface = InverseSurfaceLight,
+    inverseOnSurface = InverseOnSurfaceLight,
+    inversePrimary = InversePrimaryLight,
+    surfaceTint = SurfaceTintLight,
+    scrim = ScrimLight,
+    surfaceBright = SurfaceBrightLight,
+    surfaceDim = SurfaceDimLight,
+    surfaceContainerLowest = SurfaceContainerLowestLight,
+    surfaceContainerLow = SurfaceContainerLowLight,
+    surfaceContainer = SurfaceContainerLight,
+    surfaceContainerHigh = SurfaceContainerHighLight,
+    surfaceContainerHighest = SurfaceContainerHighestLight
 )
 
 @Composable

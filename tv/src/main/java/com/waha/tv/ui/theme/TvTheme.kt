@@ -33,7 +33,17 @@ private val WahaTvColorScheme = darkColorScheme(
     onSurface = WahaBrandColors.OnSurfaceDark,
     surfaceVariant = WahaBrandColors.SurfaceVariantDark,
     onSurfaceVariant = WahaBrandColors.OnSurfaceVariantDark,
-    border = WahaBrandColors.OutlineDark
+    border = WahaBrandColors.OutlineDark,
+    // tv-material calls the outline-variant role `borderVariant`; it has no
+    // surfaceContainer* roles at all.
+    borderVariant = WahaBrandColors.OutlineVariantDark,
+    errorContainer = WahaBrandColors.ErrorContainerDark,
+    onErrorContainer = WahaBrandColors.OnErrorContainerDark,
+    inverseSurface = WahaBrandColors.InverseSurfaceDark,
+    inverseOnSurface = WahaBrandColors.InverseOnSurfaceDark,
+    inversePrimary = WahaBrandColors.InversePrimaryDark,
+    surfaceTint = WahaBrandColors.SurfaceTintDark,
+    scrim = WahaBrandColors.ScrimDark
 )
 
 /**

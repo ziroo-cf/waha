@@ -33,6 +33,22 @@ val SurfaceVariantLight = WahaBrandColors.SurfaceVariantLight
 val OnSurfaceVariantLight = WahaBrandColors.OnSurfaceVariantLight
 val OutlineLight = WahaBrandColors.OutlineLight
 
+val OutlineVariantLight = WahaBrandColors.OutlineVariantLight
+val ErrorContainerLight = WahaBrandColors.ErrorContainerLight
+val OnErrorContainerLight = WahaBrandColors.OnErrorContainerLight
+val InverseSurfaceLight = WahaBrandColors.InverseSurfaceLight
+val InverseOnSurfaceLight = WahaBrandColors.InverseOnSurfaceLight
+val InversePrimaryLight = WahaBrandColors.InversePrimaryLight
+val SurfaceTintLight = WahaBrandColors.SurfaceTintLight
+val ScrimLight = WahaBrandColors.ScrimLight
+val SurfaceBrightLight = WahaBrandColors.SurfaceBrightLight
+val SurfaceDimLight = WahaBrandColors.SurfaceDimLight
+val SurfaceContainerLowestLight = WahaBrandColors.SurfaceContainerLowestLight
+val SurfaceContainerLowLight = WahaBrandColors.SurfaceContainerLowLight
+val SurfaceContainerLight = WahaBrandColors.SurfaceContainerLight
+val SurfaceContainerHighLight = WahaBrandColors.SurfaceContainerHighLight
+val SurfaceContainerHighestLight = WahaBrandColors.SurfaceContainerHighestLight
+
 val PrimaryDark = WahaBrandColors.PrimaryDark
 val OnPrimaryDark = WahaBrandColors.OnPrimaryDark
 val PrimaryContainerDark = WahaBrandColors.PrimaryContainerDark
@@ -59,14 +75,30 @@ val SurfaceVariantDark = WahaBrandColors.SurfaceVariantDark
 val OnSurfaceVariantDark = WahaBrandColors.OnSurfaceVariantDark
 val OutlineDark = WahaBrandColors.OutlineDark
 
+val OutlineVariantDark = WahaBrandColors.OutlineVariantDark
+val ErrorContainerDark = WahaBrandColors.ErrorContainerDark
+val OnErrorContainerDark = WahaBrandColors.OnErrorContainerDark
+val InverseSurfaceDark = WahaBrandColors.InverseSurfaceDark
+val InverseOnSurfaceDark = WahaBrandColors.InverseOnSurfaceDark
+val InversePrimaryDark = WahaBrandColors.InversePrimaryDark
+val SurfaceTintDark = WahaBrandColors.SurfaceTintDark
+val ScrimDark = WahaBrandColors.ScrimDark
+val SurfaceBrightDark = WahaBrandColors.SurfaceBrightDark
+val SurfaceDimDark = WahaBrandColors.SurfaceDimDark
+val SurfaceContainerLowestDark = WahaBrandColors.SurfaceContainerLowestDark
+val SurfaceContainerLowDark = WahaBrandColors.SurfaceContainerLowDark
+val SurfaceContainerDark = WahaBrandColors.SurfaceContainerDark
+val SurfaceContainerHighDark = WahaBrandColors.SurfaceContainerHighDark
+val SurfaceContainerHighestDark = WahaBrandColors.SurfaceContainerHighestDark
+
 val WahaTeal: Color
     @Composable get() = MaterialTheme.colorScheme.primary
 
 val WahaTealBright: Color
     @Composable get() = MaterialTheme.colorScheme.primary
 
-val WahaGold: Color
-    @Composable get() = MaterialTheme.colorScheme.secondary
+// Gold is fixed in both schemes (stars, badges) and is not a theme role.
+val WahaGold: Color = WahaBrandColors.GoldFixed
 
 val WahaDarkBg: Color
     @Composable get() = MaterialTheme.colorScheme.background

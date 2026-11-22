@@ -74,7 +74,6 @@ import com.waha.domain.toMediaSource
 import com.waha.ui.theme.WahaCardBg
 import com.waha.ui.theme.WahaCardBg2
 import com.waha.ui.theme.WahaDarkBg
-import com.waha.ui.theme.WahaGold
 import com.waha.ui.theme.WahaLine
 import com.waha.ui.theme.WahaTeal
 import com.waha.ui.theme.WahaTealBright
