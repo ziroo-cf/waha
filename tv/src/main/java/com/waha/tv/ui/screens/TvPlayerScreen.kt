@@ -920,7 +920,7 @@ internal fun PlayerPanel(
 }
 
 /** The panel's ink: the near-black that sits on a white selected pill. */
-private val PanelInk = Color(0xFF121212)
+private val PanelInk = Color(0xFF0A1514)
 
 /** One resolved set of colours for a panel control, so a pill and a button match. */
 private data class PanelControlColors(

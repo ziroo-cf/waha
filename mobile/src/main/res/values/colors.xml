@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FF6D00</color>
+    <color name="ic_launcher_background">#0A1514</color>
+    <!-- The window (and its system bars) before Compose draws: the dark
+         scheme's background, so the cold start never flashes. -->
+    <color name="waha_window_background">#0A1514</color>
 </resources>

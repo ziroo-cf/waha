@@ -14,7 +14,7 @@ import com.waha.brand.WahaBrandColors
  */
 object WahaTvColors {
 
-    /** The warm-orange brand accent (mobile's primary) used for focus and progress. */
+    /** The teal brand accent (mobile's primary) used for focus and selection. */
     val Accent: Color
         @Composable get() = MaterialTheme.colorScheme.primary
 
@@ -53,7 +53,7 @@ object WahaTvColors {
      * behind the panel's chips. Controls on top are translucent white, so the
      * panel stays one quiet strip under the video.
      */
-    val PanelBackground = Color(0xF2131313)
+    val PanelBackground = Color(0xF211201E)
 
     /**
      * Fixed colours that do not change with the scheme: media scrims and the
