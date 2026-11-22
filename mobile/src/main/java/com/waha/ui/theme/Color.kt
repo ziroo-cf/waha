@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.waha.brand.WahaBrandColors
+import com.waha.data.ThemePreferenceStore
 
 // The literals live in :core (WahaBrandColors) so the phone and TV builds share
 // one brand palette; these names are what the phone screens already use.
@@ -99,6 +100,13 @@ val WahaTealBright: Color
 
 // Gold is fixed in both schemes (stars, badges) and is not a theme role.
 val WahaGold: Color = WahaBrandColors.GoldFixed
+
+// The brand orange as small text on a light surface needs the deeper fixed
+// shade; in dark mode primary is already legible, so one token covers both.
+val WahaOrangeTextLight: Color = WahaBrandColors.OrangeTextFixed
+
+val WahaOrangeText: Color
+    @Composable get() = if (ThemePreferenceStore.isDarkMode.value) MaterialTheme.colorScheme.primary else WahaOrangeTextLight
 
 val WahaDarkBg: Color
     @Composable get() = MaterialTheme.colorScheme.background
