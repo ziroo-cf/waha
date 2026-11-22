@@ -76,6 +76,7 @@ import com.waha.ui.theme.WahaCardBg
 import com.waha.ui.theme.WahaCardBg2
 import com.waha.ui.theme.WahaDarkBg
 import com.waha.ui.theme.WahaLine
+import com.waha.ui.theme.WahaOrangeText
 import com.waha.ui.theme.WahaTeal
 import com.waha.ui.theme.WahaTealBright
 import com.waha.ui.theme.WahaTextMuted
@@ -451,7 +452,7 @@ fun VideoPlayerModal(
                         Text(state.message, color = WahaTextWarm)
                         Row {
                             TextButton(onClick = { retryKey++ }) {
-                                Text("إعادة المحاولة", color = WahaTealBright)
+                                Text("إعادة المحاولة", color = WahaOrangeText)
                             }
                         }
                     }

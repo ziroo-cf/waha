@@ -31,6 +31,7 @@ import com.waha.domain.VideoItem
 import com.waha.ui.theme.WahaDarkBg
 import com.waha.ui.theme.WahaCardBg
 import com.waha.ui.theme.WahaLine
+import com.waha.ui.theme.WahaOrangeText
 import com.waha.ui.theme.WahaTealBright
 import com.waha.ui.theme.WahaTextMuted
 import com.waha.ui.theme.WahaTextWarm
@@ -188,7 +189,7 @@ private fun RecentSearchesSection(
                 )
             }
             TextButton(onClick = onClearAll) {
-                Text("مسح الكل", color = WahaTealBright, fontSize = 13.sp)
+                Text("مسح الكل", color = WahaOrangeText, fontSize = 13.sp)
             }
         }
 

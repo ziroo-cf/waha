@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.waha.data.ThemePreferenceStore
 import com.waha.ui.theme.WahaDarkBg
 import com.waha.ui.theme.WahaLine
+import com.waha.ui.theme.WahaOrangeText
 import com.waha.ui.theme.WahaTeal
 import com.waha.ui.theme.WahaTextMuted
 import com.waha.ui.theme.WahaTextWarm
@@ -249,7 +250,7 @@ fun ContentPolicyDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("حسناً", color = WahaTeal)
+                Text("حسناً", color = WahaOrangeText)
             }
         }
     )

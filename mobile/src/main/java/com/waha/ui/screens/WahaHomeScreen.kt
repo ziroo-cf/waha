@@ -186,7 +186,7 @@ fun WahaHomeScreen(
                         Text("تعذّر تحميل المحتوى", color = WahaTextWarm)
                         Spacer(Modifier.height(8.dp))
                         TextButton(onClick = { viewModel.loadVideos() }) {
-                            Text("إعادة المحاولة", color = WahaTealBright)
+                            Text("إعادة المحاولة", color = WahaOrangeText)
                         }
                     }
                 }
