@@ -48,12 +48,12 @@ object WahaTvColors {
         @Composable get() = MaterialTheme.colorScheme.secondary
 
     /**
-     * The player's control panel backdrop: the night-brown background rather than
-     * the scheme's warmer [SurfaceVariant], which read as a lit card behind the
-     * panel's chips. Controls on top are translucent white, so the panel stays one
-     * quiet strip under the video.
+     * The player's control panel backdrop: a green-black plate rather than the
+     * scheme's [SurfaceVariant], which reads as a lit card behind the panel's
+     * chips. Controls on top are translucent white, so the panel stays one quiet
+     * strip under the video.
      */
-    val PanelBackground = Color(0xF21C1612)
+    val PanelBackground = Color(0xF2121815)
 
     /**
      * Fixed colours that do not change with the scheme: media scrims and the

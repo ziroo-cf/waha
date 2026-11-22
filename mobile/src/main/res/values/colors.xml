@@ -3,5 +3,5 @@
     <color name="ic_launcher_background">#FF6600</color>
     <!-- The window (and its system bars) before Compose draws: the dark
          scheme's background, so the cold start never flashes. -->
-    <color name="waha_window_background">#130F0B</color>
+    <color name="waha_window_background">#0B0F0D</color>
 </resources>

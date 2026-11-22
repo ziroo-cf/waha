@@ -3,5 +3,5 @@
     <!-- Referenced by the shared adaptive launcher icon in mipmap-anydpi-v26. -->
     <color name="ic_launcher_background">#FF6600</color>
     <!-- The window before Compose draws: the dark scheme's background. -->
-    <color name="waha_window_background">#130F0B</color>
+    <color name="waha_window_background">#0B0F0D</color>
 </resources>

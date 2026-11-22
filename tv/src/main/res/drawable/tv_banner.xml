@@ -12,7 +12,7 @@
 
     <!-- Night-sky background, matching the app's dark default. -->
     <path
-        android:fillColor="#130F0B"
+        android:fillColor="#0B0F0D"
         android:pathData="M0,0h320v180h-320z" />
 
     <!-- Sand dunes settling at the bottom, in the brand green. -->
@@ -25,7 +25,7 @@
         android:fillColor="#FFB300"
         android:pathData="M160,58m-38,0a38,38 0 1,0 76,0a38,38 0 1,0 -76,0" />
     <path
-        android:fillColor="#130F0B"
+        android:fillColor="#0B0F0D"
         android:pathData="M150,42 l26,16 -26,16 z" />
 
     <!-- A darker dune in front, for depth. -->
