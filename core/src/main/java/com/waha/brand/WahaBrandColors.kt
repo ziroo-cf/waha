@@ -108,7 +108,9 @@ object WahaBrandColors {
 
     val InverseSurfaceDark = Color(0xFFE3E8E4)
     val InverseOnSurfaceDark = Color(0xFF1B2420)
-    val InversePrimaryDark = Color(0xFFB84500)
+    // One step darker than [OrangeTextFixed]: #B84500 reached only 4.35:1 on
+    // [InverseSurfaceDark], while this clears 4.5:1 for text used as a link.
+    val InversePrimaryDark = Color(0xFFB24200)
 
     val SurfaceBrightDark = Color(0xFF2A3530)
     val SurfaceDimDark = Color(0xFF0B0F0D)
