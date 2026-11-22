@@ -36,6 +36,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -510,7 +511,7 @@ fun VideoPlayerModal(
                                     Icon(
                                         imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                                         contentDescription = if (isSaved) "إزالة من المحفوظات" else "إضافة للمحفوظات",
-                                        tint = if (isSaved) WahaTeal else WahaTextMuted
+                                        tint = if (isSaved) MaterialTheme.colorScheme.secondary else WahaTextMuted
                                     )
                                 }
                             }

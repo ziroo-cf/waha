@@ -168,7 +168,7 @@ fun SettingsScreen(topBarHeight: Dp, bottomBarHeight: Dp, sideBarPadding: Dp = 0
 private fun SettingsSectionTitle(title: String) {
     Text(
         text = title,
-        color = WahaTeal,
+        color = WahaTextMuted,
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)

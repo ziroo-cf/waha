@@ -333,7 +333,7 @@ fun TvVideoCard(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(progressFraction.coerceIn(0f, 1f))
-                            .background(WahaTvColors.Accent)
+                            .background(MaterialTheme.colorScheme.secondary)
                     )
                 }
             }

@@ -68,7 +68,7 @@ fun TvSettingsScreen() {
 private fun TvSettingsSectionTitle(title: String) {
     Text(
         text = title,
-        color = WahaTvColors.Accent,
+        color = WahaTvColors.TextMuted,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )

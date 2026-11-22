@@ -448,7 +448,7 @@ private fun ContinueWatchingCard(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(progress.coerceIn(0f, 1f))
-                        .background(WahaTeal)
+                        .background(MaterialTheme.colorScheme.secondary)
                 )
             }
         }
